@@ -89,6 +89,7 @@ afterwards.
 | Feature | How |
 |---|---|
 | Group by | Folders / Role (code, tests, specs, docs…) / This session / Diff. Buildings fly to their new places |
+| Time range | Next to the live status: the **latest session** by default (two quiet hours start a new one), today, a past session, or everything. The event log keeps everything; the city, the timeline, "This session", the review list and the scope inference all follow the chosen range |
 | Activity | Bottom left; filter, scroll back; click a file to fly there, click a command to expand it |
 | Compare | Pick a branch to compare with main; the city is colored by git diff; click a building for its diff |
 | File details | Click a building: lines, activity, its **uncommitted diff** (or the branch's diff when comparing), **Open in VS Code** |

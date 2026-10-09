@@ -77,6 +77,37 @@ function Select({ value, onChange, title, children }) {
   );
 }
 
+const hhmm = (ms) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+const mmdd = (ms) => new Date(ms).toLocaleDateString([], { month: "numeric", day: "numeric" });
+const sourceNames = (s) => s.sources.map((x) => (t(`source.${x}`).startsWith("source.") ? x : t(`source.${x}`))).join(", ");
+
+// Which stretch of the event log the city shows (see lib/sessions.js). Encoded in the <select> as
+// "recent" | "today" | "all" | "s:<session id>".
+function RangePicker({ sessions, value, onChange }) {
+  const latest = sessions[sessions.length - 1];
+  const past = sessions.slice(0, -1).reverse(); // newest first
+  const encoded = value.kind === "session" ? `s:${value.id}` : value.kind;
+  const pick = (v) => onChange?.(v.startsWith("s:") ? { kind: "session", id: Number(v.slice(2)) } : { kind: v });
+  return (
+    <Select value={encoded} onChange={pick} title={t("range.hint")}>
+      <option value="recent">
+        {latest ? t("range.recent", { from: hhmm(latest.start), n: latest.count }) : t("range.recentEmpty")}
+      </option>
+      <option value="today">{t("range.today")}</option>
+      <option value="all">{t("range.all")}</option>
+      {past.length > 0 && (
+        <optgroup label={t("range.past")}>
+          {past.map((s) => (
+            <option key={s.id} value={`s:${s.id}`}>
+              {t("range.session", { day: mmdd(s.start), from: hhmm(s.start), to: hhmm(s.end), n: s.count, who: sourceNames(s) })}
+            </option>
+          ))}
+        </optgroup>
+      )}
+    </Select>
+  );
+}
+
 const Divider = () => <span style={{ width: 1, alignSelf: "stretch", background: theme.panelBorder, margin: "2px 2px" }} />;
 
 // Top overlay in three parts:
@@ -113,6 +144,10 @@ export default function TopBar({
   pickMode = false,
   pickCount = 0,
   onTogglePickMode,
+  sessions = [],
+  rangeSel = { kind: "recent" },
+  onRange,
+  viewingPast = false,
   reviewOpen = false,
   reviewCount = 0,
   onToggleReview,
@@ -159,12 +194,13 @@ export default function TopBar({
               width: 8,
               height: 8,
               borderRadius: "50%",
-              background: replaying ? theme.written : connected ? theme.live : theme.offline,
-              boxShadow: (connected || replaying) && theme.bloom ? `0 0 8px ${replaying ? theme.written : theme.live}` : "none",
+              background: replaying || viewingPast ? theme.written : connected ? theme.live : theme.offline,
+              boxShadow: (connected || replaying) && theme.bloom ? `0 0 8px ${replaying || viewingPast ? theme.written : theme.live}` : "none",
             }}
           />
-          {replaying ? t("timeline.badge") : connected ? t("top.live") : t("top.offline")}
+          {replaying ? t("timeline.badge") : viewingPast ? t("range.pastBadge") : connected ? t("top.live") : t("top.offline")}
         </span>
+        <RangePicker sessions={sessions} value={rangeSel} onChange={onRange} />
       </span>
 
       {/* Middle: grouping, the main control */}

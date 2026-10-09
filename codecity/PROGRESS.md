@@ -291,6 +291,16 @@ Colors are explained in the legend at the bottom right.
     for real there (`EDITS` in `record.mjs`), so the diffs on screen are real; forgekit itself is
     untouched. Take 3 box-selected at full-city zoom and caught 15 files from three folders;
     take 4 flies in first and catches the Extensions folder (8 files).
+45. **Zoom toward the cursor**: zooming centered on the screen pushed an edge building off
+    screen, which looked like the wheel did nothing. `zoomToCursor`, and about 8% per notch. A
+    separate report of the wheel not zooming at all until a reload could not be reproduced.
+46. **Time ranges instead of an ever-growing "session"**: the log is never cleared, so "This
+    session", the replay, the review list and the scope inference were really "everything",
+    growing by the day and making "new area" warnings less and less meaningful. Sessions are now
+    split by two quiet hours (`lib/sessions.js`), and the city shows the latest one by default;
+    a picker offers today, a past session (closed, with a "Past work" badge, since live events are
+    not shown) or everything. The raw events stay in the page and a range change re-folds them;
+    the log on disk is untouched.
 
 ## ⚠️ Incident: pi killed every Node process (step 3 Part C)
 

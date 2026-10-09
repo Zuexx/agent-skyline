@@ -34,6 +34,7 @@ import { buildingTransform, HEIGHT_SCALE } from "./lib/geometry.js";
 import { buildView } from "./lib/views.js";
 import { pathIndex, pathsInCommand } from "./lib/commandPaths.js";
 import { vscodeUrl } from "./lib/editor.js";
+import { rangeFor, segmentSessions } from "./lib/sessions.js";
 import { depsOf, useDeps } from "./lib/deps.js";
 import { rankReview, reviewItems } from "./lib/risk.js";
 import { fetchWorkingDiff, useWorking } from "./lib/useWorking.js";
@@ -157,12 +158,34 @@ export default function App() {
   const [selected, setSelected] = useState(null);
   // Index of the working tree's paths, so Bash commands that name files light those buildings up.
   const cmdIndex = useMemo(() => (liveCity ? pathIndex(liveCity.buildings.map((b) => b.path)) : null), [liveCity]);
+  // Which stretch of the log the city shows: the latest working session by default (a gap of two
+  // quiet hours starts a new one), today, a past session, or everything. See lib/sessions.js.
+  const [rangeSel, setRangeSel] = useState({ kind: "recent" });
+  const [range, setRange] = useState({ since: Infinity, until: null }); // nothing until events arrive
   // Connect only once the city is known, so replayed commands can be resolved to files.
-  const { activity: liveActivity, connected } = useActivity(cmdIndex ? "/api/events" : null, (cmd) => pathsInCommand(cmd, cmdIndex));
+  const {
+    activity: liveActivity,
+    connected,
+    events: rawEvents,
+    version: eventsVersion,
+    writes: writeCount,
+  } = useActivity(cmdIndex ? "/api/events" : null, (cmd) => pathsInCommand(cmd, cmdIndex), range);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const sessions = useMemo(() => segmentSessions(rawEvents), [eventsVersion]);
+  useEffect(() => {
+    const next = rangeFor(rangeSel, sessions, Date.now());
+    setRange((prev) => (prev.since === next.since && prev.until === next.until ? prev : next));
+  }, [rangeSel, sessions]);
   // Replay swaps in the session as of a past moment; everything drawn follows `activity`,
   // while alerts and rescans keep using the live stream.
   const replay = useReplay(liveActivity.feed);
   const activity = replay.activity ?? liveActivity;
+  // A replay belongs to the range it was started in.
+  useEffect(() => {
+    if (replay.active) replay.stop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range]);
+  const viewingPast = range.until != null; // a closed past session: live events are not shown
   // How files are grouped into districts: folder / role / touched / diff (see lib/views.js).
   const [viewId, setViewId] = useState("folder");
   const zones = useZones();
@@ -284,7 +307,6 @@ export default function App() {
   const alerts = useMemo(() => alertsFrom(liveActivity.feed, liveWarnings), [liveActivity.feed, liveWarnings]);
 
   // Uncommitted changes in the working tree, refreshed after every write the agents report.
-  const writeCount = useMemo(() => liveActivity.feed.filter((ev) => ev.kind === "write").length, [liveActivity.feed]);
   const working = useWorking(writeCount);
 
   // What the detail panel's diff shows: the compared branch's change to the selected file, or its
@@ -481,6 +503,10 @@ export default function App() {
         districtCount={city.districts?.length ?? 0}
         connected={connected}
         replaying={replay.active}
+        sessions={sessions}
+        rangeSel={rangeSel}
+        onRange={setRangeSel}
+        viewingPast={viewingPast}
         follow={follow}
         onToggleFollow={() => setFollow((f) => !f)}
         onFit={() => {
