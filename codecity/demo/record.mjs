@@ -300,7 +300,7 @@ await sleep(600);
 // 7. Compare a branch
 await clickLocator(button(/回到能看到整座城市/));
 await caption("比較分支:這次修正到底改了什麼?", "Compare a branch: what did this fix actually change?", 400);
-const compareSelect = page.locator("select").first();
+const compareSelect = page.locator('select[title^="選一個分支"]'); // by title: the time-range picker comes first
 await clickLocator(compareSelect);
 await compareSelect.selectOption("fix/api-error-and-jwks-hardening");
 await sleep(2800);
