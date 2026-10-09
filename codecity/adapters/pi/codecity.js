@@ -78,6 +78,15 @@ export default function codecity(pi) {
     argsById.set(event.toolCallId, event.args);
   });
 
+  // The agent finished and is waiting for the person: logged like Claude Code's Stop hook.
+  pi.on("agent_end", async (_event, ctx) => {
+    try {
+      await append(normalize(toPayload(null, {}, ctx, "Stop"), new Date(), ctx?.cwd, "pi"));
+    } catch {
+      // logging is best effort
+    }
+  });
+
   pi.on("tool_execution_end", async (event, ctx) => {
     const args = argsById.get(event.toolCallId);
     argsById.delete(event.toolCallId);

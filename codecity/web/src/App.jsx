@@ -34,7 +34,8 @@ import { buildingTransform, HEIGHT_SCALE } from "./lib/geometry.js";
 import { buildView } from "./lib/views.js";
 import { pathIndex, pathsInCommand } from "./lib/commandPaths.js";
 import { vscodeUrl } from "./lib/editor.js";
-import { rangeFor, segmentSessions } from "./lib/sessions.js";
+import { agentsIn, inRange, rangeFor, segmentSessions } from "./lib/sessions.js";
+import { computeConflicts } from "./lib/conflicts.js";
 import { depsOf, useDeps } from "./lib/deps.js";
 import { rankReview, reviewItems } from "./lib/risk.js";
 import { fetchWorkingDiff, useWorking } from "./lib/useWorking.js";
@@ -161,7 +162,9 @@ export default function App() {
   // Which stretch of the log the city shows: the latest working session by default (a gap of two
   // quiet hours starts a new one), today, a past session, or everything. See lib/sessions.js.
   const [rangeSel, setRangeSel] = useState({ kind: "recent" });
-  const [range, setRange] = useState({ since: Infinity, until: null }); // nothing until events arrive
+  const [range, setRange] = useState({ since: Infinity, until: null, agent: null }); // nothing until events arrive
+  // Optionally just one agent's events (agent key), within that range.
+  const [agentSel, setAgentSel] = useState(null);
   // Connect only once the city is known, so replayed commands can be resolved to files.
   const {
     activity: liveActivity,
@@ -173,9 +176,20 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const sessions = useMemo(() => segmentSessions(rawEvents), [eventsVersion]);
   useEffect(() => {
-    const next = rangeFor(rangeSel, sessions, Date.now());
-    setRange((prev) => (prev.since === next.since && prev.until === next.until ? prev : next));
-  }, [rangeSel, sessions]);
+    const next = { ...rangeFor(rangeSel, sessions, Date.now()), agent: agentSel };
+    setRange((prev) => (prev.since === next.since && prev.until === next.until && prev.agent === next.agent ? prev : next));
+  }, [rangeSel, sessions, agentSel]);
+  // Agents in the time range, numbered once for the whole range ("Claude 2" stays "Claude 2" when
+  // the view is narrowed to it). A selected agent absent from a new range is dropped.
+  const agents = useMemo(
+    () => agentsIn(rawEvents, { since: range.since, until: range.until }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [eventsVersion, range.since, range.until]
+  );
+  const agentSeq = useMemo(() => Object.fromEntries(agents.map((a) => [a.key, a.n])), [agents]);
+  useEffect(() => {
+    if (agentSel != null && agents.length && !agents.some((a) => a.key === agentSel)) setAgentSel(null);
+  }, [agents, agentSel]);
   // Replay swaps in the session as of a past moment; everything drawn follows `activity`,
   // while alerts and rescans keep using the live stream.
   const replay = useReplay(liveActivity.feed);
@@ -293,18 +307,26 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [unknownKey, compare.active]);
 
-  // Scope check over the working tree's activity: declared globs, or inference when none.
+  // Every agent's events in the time range (newest first), whatever the agent filter shows:
+  // conflicts need both agents, and alerts must ring for any agent. Replay never touches it.
+  const allFeed = useMemo(
+    () => rawEvents.filter((ev) => inRange(ev, { since: range.since, until: range.until })).slice(-2000).reverse(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [eventsVersion, range.since, range.until]
+  );
+  const conflicts = useMemo(() => computeConflicts(allFeed), [allFeed]);
+  // Scope check over what is shown (declared globs, or inference when none), plus conflicts.
   const warnings = useMemo(
-    () => computeWarnings(activity.feed, { declared: scope.allow, known: liveIndex }),
-    [activity.feed, scope.allow, liveIndex]
+    () => new Map([...computeWarnings(activity.feed, { declared: scope.allow, known: liveIndex }), ...conflicts]),
+    [activity.feed, scope.allow, liveIndex, conflicts]
   );
   const warnPaths = useMemo(() => new Set([...warnings.values()].map((w) => w.path)), [warnings]);
-  // Alerts come from the live stream only: replaying history must not ring again.
-  const liveWarnings = useMemo(
-    () => (replay.active ? computeWarnings(liveActivity.feed, { declared: scope.allow, known: liveIndex }) : warnings),
-    [replay.active, liveActivity.feed, scope.allow, liveIndex, warnings]
+  // Alerts come from the live stream of every agent: neither a replay nor the agent filter mutes them.
+  const alertWarnings = useMemo(
+    () => new Map([...computeWarnings(allFeed, { declared: scope.allow, known: liveIndex }), ...conflicts]),
+    [allFeed, scope.allow, liveIndex, conflicts]
   );
-  const alerts = useMemo(() => alertsFrom(liveActivity.feed, liveWarnings), [liveActivity.feed, liveWarnings]);
+  const alerts = useMemo(() => alertsFrom(allFeed, alertWarnings), [allFeed, alertWarnings]);
 
   // Uncommitted changes in the working tree, refreshed after every write the agents report.
   const working = useWorking(writeCount);
@@ -351,17 +373,32 @@ export default function App() {
   const agentName = (a) => {
     if (a.source === "watcher") return t("source.watcher");
     const name = t(`source.${a.source}`);
-    return `${name.startsWith("source.") ? a.source : name} ${liveActivity.agentSeq?.[a.agent] ?? ""}`.trim();
+    return `${name.startsWith("source.") ? a.source : name} ${agentSeq[a.agent] ?? ""}`.trim();
   };
-  const describeAlert = (a) => ({
-    title: a.level === "block" ? t("alert.blocked") : t(`alert.${a.rule}`),
-    body: a.level === "block" ? `${agentName(a)} · ${a.path ?? ""}` : `${agentName(a)} · ${t(`alert.${a.rule}Hint`)}`,
-  });
-  const { toasts, dismiss } = useAlerts(alerts, {
-    notify: prefs.notify,
-    describe: describeAlert,
-    onClick: (a) => a.path && focusOn(indexByPath.get(a.path)),
-  });
+  const describeAlert = (a) => {
+    if (a.level === "done") {
+      const s = a.summary;
+      return {
+        title: t("alert.done", { who: agentName(a) }),
+        body: s.written.length
+          ? t("alert.doneBody", { n: s.written.length, warned: s.warned, blocked: s.blocked })
+          : s.blocked
+            ? t("alert.doneBlockedOnly", { blocked: s.blocked })
+            : t("alert.doneNothing"),
+      };
+    }
+    if (a.level === "block") return { title: t("alert.blocked"), body: `${agentName(a)} · ${a.path ?? ""}` };
+    if (a.rule === "conflict") {
+      return { title: t("alert.conflict"), body: t("alert.conflictBody", { who: agentName(a), other: agentName({ agent: a.other, source: a.otherSource }) }) };
+    }
+    return { title: t(`alert.${a.rule}`), body: `${agentName(a)} · ${t(`alert.${a.rule}Hint`)}` };
+  };
+  // A finished turn opens the review list; anything else flies to its building.
+  const openAlert = (a) => {
+    if (a.level === "done") setReviewOpen(true);
+    else if (a.path) focusOn(indexByPath.get(a.path));
+  };
+  const { toasts, dismiss } = useAlerts(alerts, { notify: prefs.notify, describe: describeAlert, onClick: openAlert });
 
   const cameraPosition = useMemo(() => {
     if (!liveCity) return [1, 1, 1];
@@ -506,6 +543,10 @@ export default function App() {
         sessions={sessions}
         rangeSel={rangeSel}
         onRange={setRangeSel}
+        agents={agents}
+        agentSel={agentSel}
+        onAgent={setAgentSel}
+        agentLabel={(a) => agentName({ agent: a.key, source: a.source })}
         viewingPast={viewingPast}
         follow={follow}
         onToggleFollow={() => setFollow((f) => !f)}
@@ -576,7 +617,7 @@ export default function App() {
           onDone={() => setScopeMode(false)}
         />
       )}
-      <Toasts toasts={toasts} describe={describeAlert} onDismiss={dismiss} onOpen={(a) => a.path && focusOn(indexByPath.get(a.path))} />
+      <Toasts toasts={toasts} describe={describeAlert} onDismiss={dismiss} onOpen={openAlert} />
       <CompareSummary compare={compare} onClose={() => compare.setHead(null)} />
       <Legend comparing={compare.active} />
       <Timeline replay={replay} feed={liveActivity.feed} />
@@ -588,7 +629,7 @@ export default function App() {
           onClose={() => setReviewOpen(false)}
         />
       ) : (
-        <Feed feed={activity.feed} agentSeq={activity.agentSeq} warnings={warnings} onFocusPath={(p) => focusOn(indexByPath.get(p))} />
+        <Feed feed={activity.feed} agentSeq={agentSeq} warnings={warnings} onFocusPath={(p) => focusOn(indexByPath.get(p))} />
       )}
       {drag && (
         <div

@@ -28,6 +28,8 @@ export function hookSettings({ autostart = false, open = false, port = null } = 
         { matcher: "Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell", hooks: [{ type: "command", command: hook("guard.mjs"), timeout: 10 }] },
       ],
       PostToolUse: [{ matcher: "*", hooks: [{ type: "command", command: hook("log-event.mjs"), timeout: 10 }] }],
+      // "The agent is done and waiting for you": the city announces it with what the turn changed.
+      Stop: [{ hooks: [{ type: "command", command: hook("log-event.mjs"), timeout: 10 }] }],
     },
   };
   if (autostart) {

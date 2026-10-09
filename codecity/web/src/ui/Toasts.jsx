@@ -8,7 +8,7 @@ export default function Toasts({ toasts, describe, onOpen, onDismiss }) {
   return (
     <div style={{ position: "fixed", top: 70, left: "50%", transform: "translateX(-50%)", zIndex: 120, display: "flex", flexDirection: "column", gap: 8, width: "min(380px, calc(100vw - 32px))" }}>
       {toasts.map((a) => {
-        const color = a.level === "block" ? theme.blocked : theme.written;
+        const color = a.level === "block" ? theme.blocked : a.level === "done" ? theme.added : theme.written;
         const { title, body } = describe(a);
         return (
           <div
@@ -16,7 +16,7 @@ export default function Toasts({ toasts, describe, onOpen, onDismiss }) {
             role="alert"
             onClick={() => onOpen?.(a)}
             style={{
-              cursor: a.path ? "pointer" : "default",
+              cursor: a.path || a.level === "done" ? "pointer" : "default",
               background: theme.panelBg,
               border: `1px solid ${color}`,
               borderLeft: `4px solid ${color}`,

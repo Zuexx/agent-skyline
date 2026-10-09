@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { GAP_MS, inRange, rangeFor, segmentSessions, startOfDay } from "./sessions.js";
+import { agentsIn, GAP_MS, inRange, rangeFor, segmentSessions, startOfDay } from "./sessions.js";
 
 const at = (iso, source) => ({ ts: iso, ...(source ? { source } : {}) });
 const events = [
@@ -48,6 +48,30 @@ describe("rangeFor", () => {
     expect(rangeFor({ kind: "today" }, s, now)).toEqual({ since: startOfDay(now), until: null });
     expect(rangeFor({ kind: "all" }, s, now)).toEqual({ since: null, until: null });
     expect(rangeFor({ kind: "recent" }, [], now)).toEqual({ since: Infinity, until: null });
+  });
+});
+
+describe("agents", () => {
+  const evs = [
+    { ts: "2026-10-09T12:00:00Z", session: "c-a" },
+    { ts: "2026-10-09T12:01:00Z", session: "p-a", source: "pi" },
+    { ts: "2026-10-09T12:02:00Z", session: "c-b" },
+    { ts: "2026-10-09T12:03:00Z", session: "c-a" },
+    { ts: "2026-10-09T09:00:00Z", session: "c-old" },
+  ];
+  const range = { since: Date.parse("2026-10-09T11:00:00Z"), until: null };
+
+  it("are numbered per source within the time range", () => {
+    expect(agentsIn(evs, range)).toEqual([
+      { key: "c-a", source: "claude-code", n: 1, count: 2 },
+      { key: "p-a", source: "pi", n: 1, count: 1 },
+      { key: "c-b", source: "claude-code", n: 2, count: 1 },
+    ]);
+  });
+
+  it("keep their numbers when the range is narrowed to one of them", () => {
+    expect(agentsIn(evs, { ...range, agent: "c-b" }).find((a) => a.key === "c-b").n).toBe(2);
+    expect(evs.filter((e) => inRange(e, { ...range, agent: "c-a" }))).toHaveLength(2);
   });
 });
 

@@ -23,6 +23,17 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"D:/Labs/game-view-ideas/codecity/hooks/log-event.mjs\"",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }

@@ -62,9 +62,38 @@ export function rangeFor(selection, sessions, nowMs) {
   }
 }
 
-/** Whether an event falls inside a range from rangeFor. */
+const agentKey = (ev) => ev?.agent ?? ev?.session ?? "unknown"; // same as activity.agentKeyOf
+
+/**
+ * Agents seen in `events` within the time part of `range`, numbered per source in order of first
+ * appearance — the same "Claude 1, pi 1" numbering the feed uses, but fixed by the time range so
+ * it does not change when the view is narrowed to one agent: [{ key, source, n, count }].
+ */
+export function agentsIn(events, range) {
+  const timeOnly = range ? { since: range.since, until: range.until } : null;
+  const seen = new Map();
+  const perSource = new Map();
+  const sorted = (events ?? []).filter((ev) => inRange(ev, timeOnly)).sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts));
+  for (const ev of sorted) {
+    const key = agentKey(ev);
+    const source = ev.source ?? "claude-code";
+    if (!seen.has(key)) {
+      const n = (perSource.get(source) ?? 0) + 1;
+      perSource.set(source, n);
+      seen.set(key, { key, source, n, count: 0 });
+    }
+    seen.get(key).count++;
+  }
+  return [...seen.values()];
+}
+
+/**
+ * Whether an event falls inside a range from rangeFor; `range.agent`, when set, also limits it to
+ * one agent's events.
+ */
 export function inRange(ev, range) {
   if (!range) return true;
+  if (range.agent != null && agentKey(ev) !== range.agent) return false;
   const t = Date.parse(ev?.ts ?? "");
   if (Number.isNaN(t)) return range.since == null; // undated events only in unbounded views
   return (range.since == null || t >= range.since) && (range.until == null || t <= range.until);

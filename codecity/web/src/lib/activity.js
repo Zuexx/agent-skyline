@@ -10,7 +10,7 @@ const BLOCKED_WINDOW_MS = 3000;
 const READ_WINDOW_MS = 4000;
 const TINT_KINDS = ["read", "write", "blocked"];
 
-const FEED_ONLY_KINDS = ["exec", "search"]; // shown in the feed, but name no building
+const FEED_ONLY_KINDS = ["exec", "search", "stop"]; // shown in the feed, but name no building
 
 export function emptyActivity() {
   // agentSeq numbers agents in order of first appearance, for readable "Agent 1" labels.

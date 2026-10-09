@@ -63,6 +63,13 @@ test("finished tool calls are logged as pi events with repo-relative paths", asy
   );
 });
 
+test("pi finishing its turn is logged as a stop event, like Claude's Stop hook", async (t) => {
+  const { pi, repo } = await setup(t);
+  await pi.fire("agent_end", { type: "agent_end", messages: [] }, ctx(repo));
+  const evs = await logged();
+  assert.deepEqual(evs.map((e) => [e.source, e.kind, e.event, e.session]), [["pi", "stop", "Stop", "pi-abc"]]);
+});
+
 test("a write into a locked zone is blocked and logged; other writes pass", async (t) => {
   const { pi, repo } = await setup(t, { locked: ["api/**"] });
   const blocked = await pi.fire("tool_call", { toolName: "write", input: { path: path.join(repo, "api", "x.cs") } }, ctx(repo));

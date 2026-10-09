@@ -19,7 +19,7 @@ const FILTERS = {
 const PAGE = 120;
 
 const kindColor = (kind) =>
-  ({ read: theme.read, write: theme.written, blocked: theme.blocked }[kind] ?? theme.muted);
+  ({ read: theme.read, write: theme.written, blocked: theme.blocked, stop: theme.added }[kind] ?? theme.muted);
 
 const rowKey = (ev) => `${ev.ts}|${ev.session}|${ev.kind}|${ev.paths?.[0] ?? ""}|${ev.detail ?? ""}`;
 
@@ -234,6 +234,8 @@ const Row = memo(function Row({ ev, now, agentLabel, warning, open, rowId, onTog
                 {dir || t("detail.root")}
               </span>
             </>
+          ) : ev.kind === "stop" ? (
+            <span style={{ display: "block", fontSize: 12, color: theme.added }}>{t("feed.stopped")}</span>
           ) : (
             <span
               style={{

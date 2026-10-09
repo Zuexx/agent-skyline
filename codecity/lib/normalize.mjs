@@ -69,6 +69,10 @@ export function normalize(payload, now = new Date(), root = null, source = "clau
   } else if (tool === "Bash" || tool === "PowerShell") {
     kind = "exec";
     detail = asString(input.command);
+  } else if (event === "Stop") {
+    // The agent finished its turn and is waiting for the person (Claude Code's Stop hook, pi's
+    // agent_end). A subagent stopping (SubagentStop) is not that, so it stays "other".
+    kind = "stop";
   }
 
   let paths = [];

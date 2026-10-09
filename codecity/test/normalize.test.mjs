@@ -9,6 +9,11 @@ function payload(overrides) {
   return { session_id: "abc123", cwd: CWD_WIN, hook_event_name: "PostToolUse", ...overrides };
 }
 
+test("Stop → stop kind (the agent is waiting); SubagentStop stays other", () => {
+  assert.equal(normalize({ hook_event_name: "Stop", session_id: "s" }).kind, "stop");
+  assert.equal(normalize({ hook_event_name: "SubagentStop", session_id: "s" }).kind, "other");
+});
+
 test("Read → read kind with file_path", () => {
   const ev = normalize(payload({ tool_name: "Read", tool_input: { file_path: "D:\\Labs\\forgekit\\api\\x.cs" } }), NOW);
   assert.equal(ev.kind, "read");

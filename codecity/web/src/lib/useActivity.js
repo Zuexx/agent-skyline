@@ -83,9 +83,10 @@ export function useActivity(url = "/api/events", resolveCommand = null, range = 
   // A new range: rebuild the state from the kept events.
   const since = range?.since ?? null;
   const until = range?.until ?? null;
+  const agent = range?.agent ?? null;
   useEffect(() => {
-    setActivity(raw.current.filter((ev) => inRange(ev, { since, until })).reduce(applyEvent, emptyActivity()));
-  }, [since, until]);
+    setActivity(raw.current.filter((ev) => inRange(ev, { since, until, agent })).reduce(applyEvent, emptyActivity()));
+  }, [since, until, agent]);
 
   return { activity, connected, events: raw.current, version, writes: writes.current };
 }

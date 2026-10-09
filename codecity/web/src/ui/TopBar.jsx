@@ -144,6 +144,10 @@ export default function TopBar({
   pickMode = false,
   pickCount = 0,
   onTogglePickMode,
+  agents = [],
+  agentSel = null,
+  onAgent,
+  agentLabel = (a) => a.key,
   sessions = [],
   rangeSel = { kind: "recent" },
   onRange,
@@ -201,6 +205,16 @@ export default function TopBar({
           {replaying ? t("timeline.badge") : viewingPast ? t("range.pastBadge") : connected ? t("top.live") : t("top.offline")}
         </span>
         <RangePicker sessions={sessions} value={rangeSel} onChange={onRange} />
+        {agents.length > 1 && (
+          <Select value={agentSel ?? ""} onChange={(v) => onAgent?.(v || null)} title={t("agentPick.hint")}>
+            <option value="">{t("agentPick.all", { n: agents.length })}</option>
+            {agents.map((a) => (
+              <option key={a.key} value={a.key}>
+                {t("agentPick.one", { name: agentLabel(a), n: a.count })}
+              </option>
+            ))}
+          </Select>
+        )}
       </span>
 
       {/* Middle: grouping, the main control */}
