@@ -13,6 +13,8 @@ import Feed from "./ui/Feed.jsx";
 import CompareSummary from "./ui/CompareSummary.jsx";
 import ScopeBanner from "./ui/ScopeBanner.jsx";
 import Toasts from "./ui/Toasts.jsx";
+import Timeline from "./ui/Timeline.jsx";
+import { useReplay } from "./lib/useReplay.js";
 import { useActivity } from "./lib/useActivity.js";
 import { useZones } from "./lib/useZones.js";
 import { useCompare } from "./lib/useCompare.js";
@@ -122,7 +124,11 @@ export default function App() {
   // Index of the working tree's paths, so Bash commands that name files light those buildings up.
   const cmdIndex = useMemo(() => (liveCity ? pathIndex(liveCity.buildings.map((b) => b.path)) : null), [liveCity]);
   // Connect only once the city is known, so replayed commands can be resolved to files.
-  const { activity, connected } = useActivity(cmdIndex ? "/api/events" : null, (cmd) => pathsInCommand(cmd, cmdIndex));
+  const { activity: liveActivity, connected } = useActivity(cmdIndex ? "/api/events" : null, (cmd) => pathsInCommand(cmd, cmdIndex));
+  // Replay swaps in the session as of a past moment; everything drawn follows `activity`,
+  // while alerts and rescans keep using the live stream.
+  const replay = useReplay(liveActivity.feed);
+  const activity = replay.activity ?? liveActivity;
   // How files are grouped into districts: folder / role / touched / diff (see lib/views.js).
   const [viewId, setViewId] = useState("folder");
   const zones = useZones();
@@ -192,11 +198,11 @@ export default function App() {
   const liveIndex = useMemo(() => new Set((liveCity?.buildings ?? []).map((b) => b.path)), [liveCity]);
   const unknownKey = useMemo(
     () =>
-      Object.keys(activity.files)
+      Object.keys(liveActivity.files)
         .filter((p) => !liveIndex.has(p) && !p.startsWith("/") && !/^[a-z]:\//i.test(p))
         .sort()
         .join("|"),
-    [activity.files, liveIndex]
+    [liveActivity.files, liveIndex]
   );
   const rescanned = useRef(new Set());
   useEffect(() => {
@@ -221,11 +227,16 @@ export default function App() {
     [activity.feed, scope.allow, liveIndex]
   );
   const warnPaths = useMemo(() => new Set([...warnings.values()].map((w) => w.path)), [warnings]);
-  const alerts = useMemo(() => alertsFrom(activity.feed, warnings), [activity.feed, warnings]);
+  // Alerts come from the live stream only: replaying history must not ring again.
+  const liveWarnings = useMemo(
+    () => (replay.active ? computeWarnings(liveActivity.feed, { declared: scope.allow, known: liveIndex }) : warnings),
+    [replay.active, liveActivity.feed, scope.allow, liveIndex, warnings]
+  );
+  const alerts = useMemo(() => alertsFrom(liveActivity.feed, liveWarnings), [liveActivity.feed, liveWarnings]);
   const agentName = (a) => {
     if (a.source === "watcher") return t("source.watcher");
     const name = t(`source.${a.source}`);
-    return `${name.startsWith("source.") ? a.source : name} ${activity.agentSeq?.[a.agent] ?? ""}`.trim();
+    return `${name.startsWith("source.") ? a.source : name} ${liveActivity.agentSeq?.[a.agent] ?? ""}`.trim();
   };
   const describeAlert = (a) => ({
     title: a.level === "block" ? t("alert.blocked") : t(`alert.${a.rule}`),
@@ -326,6 +337,7 @@ export default function App() {
         buildingCount={city.buildings?.length ?? 0}
         districtCount={city.districts?.length ?? 0}
         connected={connected}
+        replaying={replay.active}
         follow={follow}
         onToggleFollow={() => setFollow((f) => !f)}
         onFit={() => {
@@ -379,6 +391,7 @@ export default function App() {
       <Toasts toasts={toasts} describe={describeAlert} onDismiss={dismiss} onOpen={(a) => a.path && focusOn(indexByPath.get(a.path))} />
       <CompareSummary compare={compare} onClose={() => compare.setHead(null)} />
       <Legend comparing={compare.active} />
+      <Timeline replay={replay} feed={liveActivity.feed} />
       <Feed feed={activity.feed} agentSeq={activity.agentSeq} warnings={warnings} onFocusPath={(p) => focusOn(indexByPath.get(p))} />
       {selectedBuilding && (
         <DetailPanel

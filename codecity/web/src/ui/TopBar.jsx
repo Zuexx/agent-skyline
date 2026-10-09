@@ -89,6 +89,7 @@ export default function TopBar({
   buildingCount,
   districtCount,
   connected = false,
+  replaying = false,
   follow = false,
   onToggleFollow,
   onFit,
@@ -152,11 +153,11 @@ export default function TopBar({
               width: 8,
               height: 8,
               borderRadius: "50%",
-              background: connected ? theme.live : theme.offline,
-              boxShadow: connected && theme.bloom ? `0 0 8px ${theme.live}` : "none",
+              background: replaying ? theme.written : connected ? theme.live : theme.offline,
+              boxShadow: (connected || replaying) && theme.bloom ? `0 0 8px ${replaying ? theme.written : theme.live}` : "none",
             }}
           />
-          {connected ? t("top.live") : t("top.offline")}
+          {replaying ? t("timeline.badge") : connected ? t("top.live") : t("top.offline")}
         </span>
       </span>
 
