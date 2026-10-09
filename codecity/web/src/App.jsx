@@ -35,6 +35,8 @@ import { buildView } from "./lib/views.js";
 import { pathIndex, pathsInCommand } from "./lib/commandPaths.js";
 import { vscodeUrl } from "./lib/editor.js";
 import { depsOf, useDeps } from "./lib/deps.js";
+import { rankReview, reviewItems } from "./lib/risk.js";
+import ReviewPanel from "./ui/ReviewPanel.jsx";
 
 // Isometric view direction: camera sits on the (1, 1, 1) ray above the origin.
 const ISO = new THREE.Vector3(1, 1, 1).normalize();
@@ -152,8 +154,9 @@ export default function App() {
   const [focus, setFocus] = useState(null);
 
   const indexByPath = useMemo(() => new Map((city?.buildings ?? []).map((b, i) => [b.path, i])), [city]);
-  // Who uses what in the working tree (refetched after a rescan, which replaces liveCity).
-  const depIndex = useDeps(liveCity);
+  // Who uses what: in the compared branch while comparing, else in the working tree (refetched
+  // after a rescan, which replaces liveCity).
+  const depIndex = useDeps(liveCity, compare.active ? compare.head : null);
   const selectedPath = selected != null ? city?.buildings?.[selected]?.path : null;
   const selectedDeps = useMemo(() => (selectedPath && depIndex ? depsOf(depIndex, selectedPath) : null), [selectedPath, depIndex]);
 
@@ -243,6 +246,22 @@ export default function App() {
     [replay.active, liveActivity.feed, scope.allow, liveIndex, warnings]
   );
   const alerts = useMemo(() => alertsFrom(liveActivity.feed, liveWarnings), [liveActivity.feed, liveWarnings]);
+
+  // Review list: the compared branch's changes, or this session's writes, riskiest first.
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [churn, setChurn] = useState(null);
+  useEffect(() => {
+    fetch("/api/churn")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((c) => c && setChurn(c.commits))
+      .catch(() => {});
+  }, []);
+  const ranked = useMemo(() => {
+    const warned = new Set(warnPaths);
+    for (const [p, f] of Object.entries(activity.files)) if (f.blocked > 0) warned.add(p);
+    const items = reviewItems({ diff: compare.active ? compare.diff : null, files: activity.files });
+    return rankReview(items, { churn, deps: depIndex, warned: compare.active ? new Set() : warned });
+  }, [compare.active, compare.diff, activity.files, churn, depIndex, warnPaths]);
   const agentName = (a) => {
     if (a.source === "watcher") return t("source.watcher");
     const name = t(`source.${a.source}`);
@@ -404,6 +423,9 @@ export default function App() {
         onTheme={setTheme}
         locale={prefs.locale}
         onLocale={setLocalePref}
+        reviewOpen={reviewOpen}
+        reviewCount={ranked.length}
+        onToggleReview={() => setReviewOpen((o) => !o)}
       />
       {zoneMode && <ZoneBanner locked={zones.locked} onUnlockDistrict={zones.toggleDistrict} onDone={() => setZoneMode(false)} />}
       {scopeMode && (
@@ -413,7 +435,16 @@ export default function App() {
       <CompareSummary compare={compare} onClose={() => compare.setHead(null)} />
       <Legend comparing={compare.active} />
       <Timeline replay={replay} feed={liveActivity.feed} />
-      <Feed feed={activity.feed} agentSeq={activity.agentSeq} warnings={warnings} onFocusPath={(p) => focusOn(indexByPath.get(p))} />
+      {reviewOpen ? (
+        <ReviewPanel
+          ranked={ranked}
+          scopeKey={compare.active ? `${compare.base}...${compare.head}` : "live"}
+          onFocusPath={(p) => focusOn(indexByPath.get(p))}
+          onClose={() => setReviewOpen(false)}
+        />
+      ) : (
+        <Feed feed={activity.feed} agentSeq={activity.agentSeq} warnings={warnings} onFocusPath={(p) => focusOn(indexByPath.get(p))} />
+      )}
       {selectedBuilding && (
         <DetailPanel
           building={selectedBuilding}

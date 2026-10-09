@@ -18,9 +18,13 @@ const MAX_PARSED_FILES = 8000; // beyond this the city is too dense for roads to
 
 const JS_EXT = /\.(m|c)?(j|t)sx?$/i;
 const CS_EXT = /\.cs$/i;
+
+/** Files buildDeps reads: sources and tsconfigs. Lets a git-ref reader load only these. */
+export const readsFile = (p) => JS_EXT.test(p) || CS_EXT.test(p) || /(^|\/)tsconfig[^/]*\.json$/i.test(p);
 const RESOLVE_EXT = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"];
 
-const readText = (root, p) => {
+/** Reads repo files from the working tree; buildDeps takes another reader for a git ref. */
+export const diskReader = (root) => (p) => {
   const abs = path.join(root, ...p.split("/"));
   try {
     if (statSync(abs).size > MAX_FILE_BYTES) return null;
@@ -65,11 +69,11 @@ function parseJsonc(text) {
 }
 
 /** tsconfig `paths` per directory: [{ dir, rules: [{ prefix, suffix, targets }] }], deepest first. */
-function loadAliases(root, paths) {
+function loadAliases(read, paths) {
   const out = [];
   for (const p of paths) {
     if (!/(^|\/)tsconfig[^/]*\.json$/i.test(p)) continue;
-    const text = readText(root, p);
+    const text = read(p);
     if (!text) continue;
     let opts;
     try {
@@ -169,16 +173,18 @@ function csEdges(parsed) {
   return edges;
 }
 
-/** Dependency edges among `paths` (repo-relative, "/"-separated) of the repo at `root`. */
-export function buildDeps(root, paths) {
+/**
+ * Dependency edges among `paths` (repo-relative, "/"-separated). `read(path)` returns a file's
+ * text or null; by default the working tree of the repo at `root`.
+ */
+export function buildDeps(root, paths, read = diskReader(root)) {
   const files = new Set(paths);
-  const sources = paths.filter((p) => JS_EXT.test(p) || CS_EXT.test(p));
-  const truncated = sources.length > MAX_PARSED_FILES;
-  const aliases = loadAliases(root, paths);
+  const sources = paths.filter((p) => JS_EXT.test(p) || CS_EXT.test(p));  const truncated = sources.length > MAX_PARSED_FILES;
+  const aliases = loadAliases(read, paths);
   const edges = [];
   const cs = new Map();
   for (const p of sources.slice(0, MAX_PARSED_FILES)) {
-    const text = readText(root, p);
+    const text = read(p);
     if (text == null) continue;
     if (CS_EXT.test(p)) cs.set(p, parseCs(text));
     else for (const to of jsEdges(p, text, files, aliases)) edges.push([p, to]);

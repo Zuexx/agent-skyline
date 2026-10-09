@@ -36,6 +36,20 @@ const PATHS = {
       <path d="M5 4h11l-2 4 2 4H5" />
     </>
   ),
+  // Review list: ticked rows.
+  review: (
+    <>
+      <path d="M4 6.5l1.5 1.5L8 5.5M4 12.5l1.5 1.5L8 11.5M4 18.5l1.5 1.5L8 17.5" />
+      <path d="M11 7h9M11 13h9M11 19h9" />
+    </>
+  ),
+  // Assign a task: a selection marquee.
+  select: (
+    <>
+      <path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4" />
+      <path d="M10 10h4v4h-4z" />
+    </>
+  ),
   play: <path d="M7 4.5v15l12-7.5z" />,
   pause: <path d="M8 5v14M16 5v14" />,
   replay: (

@@ -21,19 +21,23 @@ export function depsOf(index, path) {
   return { uses, usedBy: usedBy.filter((p) => roleOf(p) !== "test"), testedBy: usedBy.filter((p) => roleOf(p) === "test") };
 }
 
-/** Working-tree dependency index from the server; refetched when the city is rescanned. */
-export function useDeps(cityKey) {
+/**
+ * Dependency index from the server: of the working tree, or of branch `ref` while comparing.
+ * Refetched when `cityKey` changes (a rescan replaces the working-tree city).
+ */
+export function useDeps(cityKey, ref = null) {
   const [data, setData] = useState(null);
   useEffect(() => {
     if (!cityKey) return undefined;
     let cancelled = false;
-    fetch("/api/deps")
+    setData(null);
+    fetch(ref ? `/api/deps?ref=${encodeURIComponent(ref)}` : "/api/deps")
       .then((res) => (res.ok ? res.json() : null))
       .then((d) => !cancelled && d && setData(d))
       .catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, [cityKey]);
+  }, [cityKey, ref]);
   return useMemo(() => (data ? { ...indexDeps(data.edges), truncated: data.truncated } : null), [data]);
 }

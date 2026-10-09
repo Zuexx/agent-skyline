@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { buildDeps, joinRepo } from "../server/deps.mjs";
+import { execFileSync } from "node:child_process";
+import { buildDeps, joinRepo, readsFile } from "../server/deps.mjs";
+import { refReader } from "../server/git.mjs";
 
 async function repo(t, files) {
   const dir = await mkdtemp(path.join(os.tmpdir(), "codecity-deps-"));
@@ -43,6 +45,23 @@ test("JS/TS: relative imports, index files, .js written for .ts, and tsconfig al
     "server/a.mjs -> app/lib/util.ts",
     "server/a.mjs -> server/b.ts",
   ]);
+});
+
+test("a branch's dependencies are read from git objects, not the working tree", async (t) => {
+  const { dir } = await repo(t, { "src/a.ts": "export const a = 1;\n" });
+  const git = (...args) => execFileSync("git", args, { cwd: dir, encoding: "utf8" });
+  git("init", "-q", "-b", "main");
+  git("-c", "user.email=t@e", "-c", "user.name=t", "add", "-A");
+  git("-c", "user.email=t@e", "-c", "user.name=t", "commit", "-q", "-m", "base");
+  git("checkout", "-q", "-b", "feature");
+  await writeFile(path.join(dir, "src", "a.test.ts"), 'import { a } from "./a";\n');
+  git("add", "-A");
+  git("-c", "user.email=t@e", "-c", "user.name=t", "commit", "-q", "-m", "test");
+  git("checkout", "-q", "main"); // the working tree no longer has the test
+
+  assert.deepEqual(buildDeps(dir, ["src/a.ts"]).edges, []);
+  const { paths, read } = refReader(dir, "feature", readsFile);
+  assert.deepEqual(sorted(buildDeps(dir, paths, read).edges), ["src/a.test.ts -> src/a.ts"]);
 });
 
 test("C#: a file uses types it names from namespaces it can see", async (t) => {

@@ -110,6 +110,9 @@ export default function TopBar({
   onTheme,
   locale,
   onLocale,
+  reviewOpen = false,
+  reviewCount = 0,
+  onToggleReview,
 }) {
   const views = VIEWS.filter((v) => !v.needsCompare || compare?.active);
   const nextTheme = THEME_ORDER[(THEME_ORDER.indexOf(themePref) + 1) % THEME_ORDER.length];
@@ -214,6 +217,8 @@ export default function TopBar({
             </>
           )}
         </span>
+        <Divider />
+        <IconButton icon="review" on={reviewOpen} badge={reviewCount} label={t("top.reviewTip")} onClick={onToggleReview} />
         <Divider />
         <IconButton icon="map" label={t("top.fitHint")} onClick={onFit} />
         <IconButton

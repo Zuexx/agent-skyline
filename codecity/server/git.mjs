@@ -53,11 +53,11 @@ function countLines(buf) {
   return n;
 }
 
-/** Files of a ref's tree with line counts: [{ path, lines }], sorted. One cat-file process. */
-export function treeFiles(root, ref) {
+/** Blob entries of a ref's tree: [{ path, sha }]. */
+function treeEntries(root, ref) {
   requireRef(ref);
   const ls = git(root, ["ls-tree", "-r", "-z", "--full-tree", ref], { encoding: "buffer" });
-  const entries = []; // { path, sha }
+  const entries = [];
   for (const rec of ls.toString("utf8").split("\0")) {
     if (!rec) continue;
     const tab = rec.indexOf("\t");
@@ -65,20 +65,47 @@ export function treeFiles(root, ref) {
     if (type !== "blob") continue; // skip submodules
     entries.push({ path: rec.slice(tab + 1), sha });
   }
-  if (!entries.length) return [];
+  return entries;
+}
 
-  const out = git(root, ["cat-file", "--batch"], { input: entries.map((e) => e.sha).join("\n") + "\n" });
-  const lines = new Map();
+/** Contents of many blobs in one cat-file process: Map sha -> Buffer. */
+function readBlobs(root, shas) {
+  const bodies = new Map();
+  if (!shas.length) return bodies;
+  const out = git(root, ["cat-file", "--batch"], { input: shas.join("\n") + "\n" });
   let pos = 0;
-  for (const e of entries) {
+  for (const sha of shas) {
     const nl = out.indexOf(10, pos);
     const header = out.subarray(pos, nl).toString("utf8").split(" "); // <sha> blob <size>
     const size = Number(header[2]);
-    const body = out.subarray(nl + 1, nl + 1 + size);
-    lines.set(e.sha, countLines(body));
+    bodies.set(sha, out.subarray(nl + 1, nl + 1 + size));
     pos = nl + 1 + size + 1; // content is followed by a newline
   }
-  return entries.map((e) => ({ path: e.path, lines: lines.get(e.sha) ?? 0 })).sort((a, b) => (a.path < b.path ? -1 : 1));
+  return bodies;
+}
+
+/** Files of a ref's tree with line counts: [{ path, lines }], sorted. One cat-file process. */
+export function treeFiles(root, ref) {
+  const entries = treeEntries(root, ref);
+  const bodies = readBlobs(root, entries.map((e) => e.sha));
+  return entries.map((e) => ({ path: e.path, lines: countLines(bodies.get(e.sha) ?? Buffer.alloc(0)) })).sort((a, b) => (a.path < b.path ? -1 : 1));
+}
+
+/**
+ * The ref's file list and a reader for the files `wanted(path)` accepts, loaded up front in one
+ * cat-file process: { paths, read(path) -> text | null }. Large files read as null.
+ */
+export function refReader(root, ref, wanted) {
+  const entries = treeEntries(root, ref);
+  const picked = entries.filter((e) => wanted(e.path));
+  const bodies = readBlobs(root, picked.map((e) => e.sha));
+  const texts = new Map(
+    picked.map((e) => {
+      const b = bodies.get(e.sha);
+      return [e.path, b && b.length <= MAX_COUNTED_BYTES ? b.toString("utf8") : null];
+    })
+  );
+  return { paths: entries.map((e) => e.path).sort(), read: (p) => texts.get(p) ?? null };
 }
 
 /**
@@ -118,6 +145,28 @@ export function diffFiles(root, base, head) {
     }
   }
   return [...files.values()].sort((x, y) => (x.path < y.path ? -1 : 1));
+}
+
+/**
+ * How often each file changed recently: { days, commits: { path: count } } from the last `days`
+ * days of history on HEAD (capped at `maxCommits`). High churn is where bugs tend to live.
+ */
+export function churn(root, days = 90, maxCommits = 3000) {
+  let out = "";
+  try {
+    out = git(root, ["log", `--since=${days}.days`, `-n${maxCommits}`, "--no-merges", "--name-only", "--format=%x00", "-z"], {
+      encoding: "utf8",
+    });
+  } catch {
+    return { days, commits: {} }; // no commits yet
+  }
+  const commits = {};
+  // -z with --format=%x00: commits are separated by NULs, file names by NULs/newlines.
+  for (const name of out.split(/[\0\n]/)) {
+    const p = name.trim();
+    if (p) commits[p] = (commits[p] ?? 0) + 1;
+  }
+  return { days, commits };
 }
 
 /** Unified diff of one file on `head` since `base` (three-dot), capped in size. */

@@ -8,13 +8,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { scanRepo } from "./scan.mjs";
 import { layout } from "./layout.mjs";
-import { diffFiles, fileDiff, listBranches, treeFiles } from "./git.mjs";
+import { churn, diffFiles, fileDiff, listBranches, refReader, treeFiles } from "./git.mjs";
 import { tailJsonl } from "./tail.mjs";
 import { loadZones } from "../lib/zones.mjs";
 import { resolveLogFile, resolveZonesFile } from "../lib/paths.mjs";
 import { rootKey } from "../lib/normalize.mjs";
 import { startWatcher } from "./watch.mjs";
-import { buildDeps } from "./deps.mjs";
+import { buildDeps, readsFile } from "./deps.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const defaultWebRoot = path.join(here, "..", "web", "dist"); // step 4 builds this folder
@@ -303,8 +303,16 @@ export function createServer({ repo, logFile, zonesFile, scopeFile = null, webRo
         else json(res, 200, await getCity(q("rescan") === "1"));
         return;
       }
+      if (p === "/api/churn" && req.method === "GET") {
+        json(res, 200, churn(repo));
+        return;
+      }
       if (p === "/api/deps" && req.method === "GET") {
-        json(res, 200, await getDeps());
+        if (q("ref")) {
+          // Another branch: read its sources from git objects, the working tree is not touched.
+          const { paths, read } = refReader(repo, q("ref"), readsFile);
+          json(res, 200, buildDeps(repo, paths, read));
+        } else json(res, 200, await getDeps());
         return;
       }
       if (p === "/api/branches" && req.method === "GET") {

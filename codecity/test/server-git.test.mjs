@@ -69,6 +69,13 @@ test("the working-tree city carries the absolute repo path for editor links", as
   assert.ok(path.isAbsolute(city.body.repoPath));
 });
 
+test("churn counts recent commits per file on HEAD", async (t) => {
+  const base = await start(t);
+  const c = await get(`${base}/api/churn`);
+  // main has one commit touching keep.txt and gone.md; the branch's commit is not on HEAD.
+  assert.deepEqual(c.body, { days: 90, commits: { "gone.md": 1, "keep.txt": 1 } });
+});
+
 test("refs that could be read as git options are rejected with 400", async (t) => {
   const base = await start(t);
   for (const url of [
