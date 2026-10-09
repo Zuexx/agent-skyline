@@ -49,6 +49,7 @@ export const architecture = [
      ${box("3D city", "React Three Fiber", "#3ddc84")}
    </div>`,
   en("禁區在寫入發生「之前」就擋下:Edit、Write,連 bash 的 echo > file 也擋。 · Locked zones block writes before they happen — including shell writes.", 22),
+  en("選用:開 Claude Code 時自動帶起城市(SessionStart hook)。 · Optional: the city starts with your Claude Code session.", 22),
 ].join("");
 
 export const outro = [
@@ -56,8 +57,8 @@ export const outro = [
   zh("看得見,才管得住", 50),
   en("You can only steer what you can see", 28),
   `<div style="margin-top:36px;font-size:22px;color:#9fb2d6;line-height:1.8">
-     即時監看 · 禁區 · 範圍檢查 · 分支比較 · 重播 · 20,000 個檔案 60 fps<br/>
-     Live view · locked zones · scope check · branch diff · replay · 20k files at 60 fps
+     即時監看 · 禁區 · 範圍檢查 · 依賴道路 · Review 清單 · 框選派工 · 分支比較 · 重播 · 20,000 個檔案 60 fps<br/>
+     Live view · locked zones · scope check · dependency roads · review list · box-select tasks · branch diff · replay · 20k files at 60 fps
    </div>`,
   `<div style="margin-top:30px;font-size:20px;color:#5b6780">codecity/ · README.md · README.zh-TW.md</div>`,
 ].join("");

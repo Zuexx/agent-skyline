@@ -40,6 +40,15 @@ node cli/install-hooks.mjs D:/path/to/repo --write    # 直接寫入 <repo>/.cla
 - `hooks/log-event.mjs`(PostToolUse):每次工具呼叫記一行事件到 `data/events.jsonl`。
 - `hooks/guard.mjs`(PreToolUse):擋下寫進禁區的動作,不論是透過 Edit/Write **還是** shell 指令。
 
+**開工作階段時自動帶起城市(選用,預設關閉):**
+
+```bash
+node cli/install-hooks.mjs D:/path/to/repo --write --autostart          # 啟動伺服器
+node cli/install-hooks.mjs D:/path/to/repo --write --autostart --open   # …並打開瀏覽器
+```
+
+這會加一個 SessionStart hook(`hooks/session-start.mjs`)。已經有伺服器在服務這個 repo 就沿用;沒有的話,從 4477 開始找第一個空的埠號在背景啟動(用 `--port` 改起始埠號)。`--open` 只在這次真的啟動了伺服器時才打開瀏覽器。hook 不輸出任何東西,也不會讓工作階段失敗。它啟動的伺服器在工作階段結束後會繼續跑;用 `node cli/stop-server.mjs [<埠號> | --all]` 依 PID 列出或關閉。
+
 ### pi
 
 ```bash
@@ -63,9 +72,9 @@ pi --extension D:/path/to/codecity/adapters/pi/codecity.js     # 只在這次執
 | 分組方式 | 資料夾 / 角色(程式碼、測試、規格…)/ 本次動過 / 差異。切換時大樓會飛到新位置 |
 | 即時動態 | 左下角;可篩選、往回捲;點檔案讓鏡頭飛過去,點指令展開完整內容 |
 | 比較分支 | 選一個分支和 main 比較,依 git diff 上色;點大樓看 diff |
-| 檔案資訊 | 點大樓:行數、活動、比較時的 diff、**在 VS Code 開啟** |
+| 檔案資訊 | 點大樓:行數、活動、**未 commit 的 diff**(比較分支時是分支的 diff)、**在 VS Code 開啟** |
 | 依賴道路 | 點大樓同時畫出弧線:紫 = 它用到的、粉紅 = 用到它的、綠 = 它的測試(JS/TS 的 import、C# 的型別使用;面板也會列出) |
-| Review 清單 | 清單 icon:比較中的分支改動,或這次工作階段寫過的檔案,依風險排序並附理由(警示、沒有測試、近期常改、很多檔案依賴、改動很大),看完打勾 |
+| Review 清單 | 清單 icon:比較中的分支改動,或所有未 commit 的改動加上這次工作階段寫過的檔案,依風險排序並附理由(警示、沒有測試、近期常改、很多檔案依賴、改動很大),看完打勾 |
 | 框選派工 | 選取 icon → 拖曳框選大樓(或逐棟點選)。複製「任務 + 檔案範圍」,或直接存成任務範圍 |
 | 任務範圍 | 旗子 icon → 點街區;範圍外的寫入會警示。沒宣告時自動推論 |
 | 禁區 | 鎖頭 icon → 點街區鎖定或解鎖 |

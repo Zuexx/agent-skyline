@@ -7,10 +7,10 @@
 
 ## 目前狀態
 
-- 原本的五個步驟,加上之後的分組切換、git diff、主題、多語系、多 agent(pi 轉接器、檔案監看)、通知、範圍檢查、時間軸重播、大型 repo 效能、演示影片,以及 `NOTES.zh-TW.md` 裡剩下的構想(VS Code 開檔、依賴道路、依風險排序的 review、框選派工),全部完成。
-- 測試:根目錄 96 個(`npm test`)+ 前端 89 個(`cd web && npm test`),全部通過。
+- 原本的五個步驟,加上之後的分組切換、git diff、主題、多語系、多 agent(pi 轉接器、檔案監看)、通知、範圍檢查、時間軸重播、大型 repo 效能、演示影片,以及 `NOTES.zh-TW.md` 裡剩下的構想(VS Code 開檔、依賴道路、依風險排序的 review、框選派工),再加上未 commit 的 diff 和選用的自動啟動,全部完成。
+- 測試:根目錄 99 個(`npm test`)+ 前端 90 個(`cd web && npm test`),全部通過。
 - 每項功能都在瀏覽器實測過;禁區擋寫入(包含 shell 寫檔)用真正的 Claude hook 和真正的 pi 驗證過。
-- 演示影片:`demo/codecity-demo.mp4`(3:10,不進版控,重錄方式見 `demo/README.zh-TW.md`)。
+- 演示影片:`demo/codecity-demo.mp4`(3:55,不進版控,重錄方式見 `demo/README.zh-TW.md`)。
 
 | Commit | 內容 |
 |---|---|
@@ -26,6 +26,8 @@
 | `c3e548f` | 依賴道路 |
 | `1a057ba` | 依風險排序的 review 清單;比較時依賴改從分支讀 |
 | `3895f92` | 框選派工 |
+| `fabea92` | 未 commit 的改動和 diff |
+| `6d2924c` | 選用:開 Claude Code 時自動啟動 |
 
 ## 怎麼用
 
@@ -117,6 +119,10 @@
 38. **依賴道路(`server/deps.mjs`、`/api/deps`)**:不用 parser,也不用 CodeGraph 索引(forgekit 沒建索引,要不要建由使用者決定)。JS/TS:相對路徑 import 和 tsconfig 的 `paths` 別名,對照 repo 的檔案清單解析。C#:一個檔案提到某個型別名稱,而且看得到那個型別的 namespace(自己的 namespace 和上層、`using`、`global using`),就算用到它;先去掉註解和字串。forgekit:459 條,21 ms。只畫選取的大樓的道路,全部畫出來會糊成一團;紫 = 用到、粉紅 = 被用、綠 = 測試。
 39. **依風險排序的 review 清單(`lib/risk.js`、`/api/churn`)**:改過的檔案(比較分支的 diff,或這次工作階段寫過的),每個訊號都說得出理由:警示、沒有測試用到的程式碼、近 90 天 commit 數、被多少檔案依賴、改動大小、被刪除但還有人用。測試、文件、資源打折。第一次實測就發現 bug:比較分支時「沒有測試」是用工作目錄判斷的,而工作目錄沒有分支新增的測試。現在依賴改從比較的分支讀(`/api/deps?ref=`,用一個 `cat-file` 程序讀 git 物件)。
 40. **框選派工**:選取工具讓左鍵不再平移(右鍵旋轉、滾輪縮放照常),拖曳框選或逐棟點選檔案。派工面板可以複製「任務 + 這些檔案當範圍」貼到 Claude Code,或把這些檔案存成宣告的任務範圍,範圍檢查就會對其他檔案的改動發出警示。它沒辦法自己啟動 Claude Code:瀏覽器頁面做不到,從伺服器啟動 agent 則是大得多的信任問題。拖曳狀態放在 ref 裡,因為 pointer 事件可能比 React 重新 render 還快(第一版會漏掉框選)。
+41. **未 commit 的 diff(`/api/working`、`/api/working/file`)**:不比較分支時,詳細面板完全沒有 diff,review 清單只說得出改了什麼,看不到怎麼改。伺服器現在會列出和 HEAD 不同的地方(不論有沒有 stage,未追蹤的檔案視為全部新增),並提供單一檔案的 diff;只接受真的有改動的路徑,不能拿來讀任意檔案。每次有寫入回報後,會稍等一下再重新抓清單。即時模式的 review 清單涵蓋所有未 commit 的改動加上這次工作階段的寫入,所以人自己改的也會列出來;這是刻意的,因為要 commit 的東西都該 review。
+42. **選用的自動啟動(`hooks/session-start.mjs`、`install-hooks --autostart [--open]`)**:來自筆記裡「需要時就在眼前」。依你的要求預設關閉。hook 會問 4477–4486 的 `/api/health`:服務這個 repo 的伺服器就沿用,服務其他 repo 的就跳過,第一個空的埠號就在背景啟動新的。`--open` 只在真的啟動了伺服器時才開瀏覽器,不然每個工作階段都會多一個分頁。啟動的伺服器會記下 PID;`cli/stop-server.mjs` 先確認那個埠號回應的還是同一個 PID(PID 會被重複使用)才關,絕不依名稱關。測試在隨機的高位埠號跑真正的 hook,並關掉自己啟動的伺服器。forgekit 的設定沒有改:要不要開由你決定。
+43. **依賴道路不需要 CodeGraph**:你問 CodeGraph 是不是必要依賴。不是:`server/deps.mjs` 自己讀原始碼(決定 38),任何 repo 不用建索引都能用。
+44. **演示影片第 3、4 版(3:55)**:新增依賴道路、review 清單和未 commit 的 diff、框選派工的段落;架構卡提到自動啟動。錄影改在 forgekit 的拋棄式 clone 上進行,劇本裡的改檔在那裡真的執行(`record.mjs` 的 `EDITS`),所以畫面上的 diff 是真的;forgekit 本身沒動。第 3 版在全景框選,框到三個資料夾共 15 個檔案;第 4 版先飛近再框,只框到 Extensions 資料夾(8 個檔案)。
 
 ## ⚠️ 事故:pi 關掉了所有 Node 程序(步驟 3 Part C)
 

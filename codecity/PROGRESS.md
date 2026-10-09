@@ -13,11 +13,11 @@ checked clean after every step).
   diff, themes, i18n, multiple agents (pi adapter, file watcher), notifications, scope check,
   timeline replay, large-repo performance, the demo video, and then the remaining ideas from
   `NOTES.md`: open in VS Code, dependency roads, the risk-ordered review list, and box-select
-  task assignment.
-- Tests: 96 at the root (`npm test`) and 89 in the front end (`cd web && npm test`), all passing.
+  task assignment; then uncommitted diffs and the optional autostart with Claude Code sessions.
+- Tests: 99 at the root (`npm test`) and 90 in the front end (`cd web && npm test`), all passing.
 - Every feature was checked in the browser. Zone blocking, including shell writes, was verified
   with the real Claude hook and a real pi session.
-- Demo video: `demo/codecity-demo.mp4` (3:10, git-ignored; to re-record, see `demo/README.md`).
+- Demo video: `demo/codecity-demo.mp4` (3:55, git-ignored; to re-record, see `demo/README.md`).
 
 | Commit | Contents |
 |---|---|
@@ -33,6 +33,8 @@ checked clean after every step).
 | `c3e548f` | Dependency roads |
 | `1a057ba` | Risk-ordered review list; branch dependencies while comparing |
 | `3895f92` | Box-select task assignment |
+| `fabea92` | Uncommitted changes and their diffs |
+| `6d2924c` | Optional autostart with a Claude Code session |
 
 ## How to use it
 
@@ -265,6 +267,30 @@ Colors are explained in the legend at the bottom right.
     It cannot start Claude Code itself: a browser page has no way in, and launching agents from
     the server would be a much bigger trust step. The drag state lives in a ref, because pointer
     events can arrive faster than React re-renders (the first version dropped the box).
+41. **Uncommitted diffs (`/api/working`, `/api/working/file`)**: without comparing a branch, the
+    detail panel showed no diff at all, so the review list could say what changed but not how.
+    The server now lists what differs from HEAD (staged or not, untracked files as all-added) and
+    serves one file's diff, only for paths that really changed, so the endpoint cannot be used to
+    read arbitrary files. The list is refetched shortly after every reported write. The review
+    list in live mode covers every uncommitted change plus this session's writes, so a person's
+    edits show up too; that is on purpose, since what gets committed is what needs review.
+42. **Optional autostart (`hooks/session-start.mjs`, `install-hooks --autostart [--open]`)**:
+    from the notes' "already there when needed". Off by default, as asked. The hook probes
+    `/api/health` on ports 4477–4486: a server for this repo is reused, one for another repo is
+    skipped, the first free port gets a new detached server. `--open` opens the browser only when
+    a server was started, or every session would add a tab. Started servers record their PID;
+    `cli/stop-server.mjs` stops them by PID only after checking the port still answers as that
+    PID (PIDs get reused), never by name. The test runs the real hook on random high ports and
+    stops what it started. forgekit's settings were not changed: turning it on is the user's call.
+43. **Dependency roads do not need CodeGraph**: asked whether CodeGraph is a dependency. It is
+    not: `server/deps.mjs` reads the sources itself (decision 38), so any repo works without an
+    index.
+44. **Demo video take 3/4 (3:55)**: new scenes for dependency roads, the review list with an
+    uncommitted diff, and box-select task assignment; the architecture card mentions autostart.
+    The recording now runs against a throwaway clone of forgekit, and the story's edits are made
+    for real there (`EDITS` in `record.mjs`), so the diffs on screen are real; forgekit itself is
+    untouched. Take 3 box-selected at full-city zoom and caught 15 files from three folders;
+    take 4 flies in first and catches the Extensions folder (8 files).
 
 ## ⚠️ Incident: pi killed every Node process (step 3 Part C)
 

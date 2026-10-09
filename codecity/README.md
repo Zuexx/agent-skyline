@@ -46,6 +46,19 @@ started **after** that pick up the hooks. Delete the file to stop.
 - `hooks/guard.mjs` (PreToolUse) blocks writes into locked zones — through Edit/Write **and**
   through shell commands.
 
+**Start the city with the session (optional, off by default):**
+
+```bash
+node cli/install-hooks.mjs D:/path/to/repo --write --autostart          # start the server
+node cli/install-hooks.mjs D:/path/to/repo --write --autostart --open   # …and open the browser
+```
+
+This adds a SessionStart hook (`hooks/session-start.mjs`). It reuses a CodeCity server that already
+serves the repo; otherwise it starts one in the background on the first free port from 4477
+(`--port` to change). `--open` opens the browser only when it had to start a server. The hook prints
+nothing and never fails the session. Servers it started keep running after the session; list or
+stop them by PID with `node cli/stop-server.mjs [<port> | --all]`.
+
 ### pi
 
 ```bash
@@ -78,9 +91,9 @@ afterwards.
 | Group by | Folders / Role (code, tests, specs, docs…) / This session / Diff. Buildings fly to their new places |
 | Activity | Bottom left; filter, scroll back; click a file to fly there, click a command to expand it |
 | Compare | Pick a branch to compare with main; the city is colored by git diff; click a building for its diff |
-| File details | Click a building: lines, activity, the diff when comparing, **Open in VS Code** |
+| File details | Click a building: lines, activity, its **uncommitted diff** (or the branch's diff when comparing), **Open in VS Code** |
 | Dependency roads | Clicking a building also draws arcs: violet to what it uses, pink from what uses it, green from its tests (JS/TS imports, C# type use; the panel lists them) |
-| Review list | List icon: the compared branch's changes, or this session's writes, riskiest first, with reasons (warnings, no tests, recent churn, many dependents, large change). Tick files off as you go |
+| Review list | List icon: the compared branch's changes, or everything uncommitted plus this session's writes, riskiest first, with reasons (warnings, no tests, recent churn, many dependents, large change). Tick files off as you go |
 | Assign a task | Select icon → drag a box over buildings (or click them). Copy the task with the files as its scope, or save them as the task scope |
 | Task scope | Flag icon → click districts; writes outside raise a warning. With nothing declared, the scope is inferred |
 | Locked zones | Lock icon → click districts to lock or unlock |
