@@ -15,7 +15,7 @@ const statusColor = (s) => ({ A: theme.added, D: theme.deleted }[s] ?? theme.wri
 
 // Right-side inspector for the selected building: file facts, live activity, and — while a
 // branch is being compared — what that branch did to the file, with the diff on demand.
-export default function DetailPanel({ building, districtPath, fileActivity, compare, change, openUrl = null }) {
+export default function DetailPanel({ building, districtPath, fileActivity, compare, change, openUrl = null, deps = null, onFocusPath }) {
   const [diffOpen, setDiffOpen] = useState(false);
   const [diff, setDiff] = useState(null);
   const [diffError, setDiffError] = useState(null);
@@ -83,6 +83,14 @@ export default function DetailPanel({ building, districtPath, fileActivity, comp
       <Row label={t("detail.lines")}>{String(building.lines ?? 0)}</Row>
       <Row label={t("detail.folder")}>{districtPath || t("detail.root")}</Row>
 
+      {deps && (deps.uses.length > 0 || deps.usedBy.length > 0 || deps.testedBy.length > 0) && (
+        <div key={building.path} style={{ marginTop: 14, paddingTop: 10, borderTop: `1px solid ${theme.panelBorder}` }}>
+          <DepList label={t("detail.uses")} color={theme.depUses} paths={deps.uses} onFocusPath={onFocusPath} />
+          <DepList label={t("detail.usedBy")} color={theme.depUsedBy} paths={deps.usedBy} onFocusPath={onFocusPath} />
+          <DepList label={t("detail.testedBy")} color={theme.added} paths={deps.testedBy} onFocusPath={onFocusPath} />
+        </div>
+      )}
+
       {compare?.active && (
         <div style={{ marginTop: 14, paddingTop: 10, borderTop: `1px solid ${theme.panelBorder}` }}>
           <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, color: theme.muted }}>
@@ -146,6 +154,57 @@ export default function DetailPanel({ building, districtPath, fileActivity, comp
           <div style={{ fontSize: 13, color: theme.muted }}>{t("detail.none")}</div>
         )}
       </div>
+    </div>
+  );
+}
+
+const DEP_SHOWN = 6;
+
+// One road kind: a colored key and the files at the other end, each clickable to fly there.
+function DepList({ label, color, paths, onFocusPath }) {
+  const [all, setAll] = useState(false);
+  if (!paths.length) return null;
+  const shown = all ? paths : paths.slice(0, DEP_SHOWN);
+  return (
+    <div style={{ marginTop: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, color: theme.muted }}>
+        <span style={{ width: 14, height: 3, borderRadius: 2, background: color }} />
+        {label} · {paths.length}
+      </div>
+      {shown.map((p) => (
+        <button
+          key={p}
+          onClick={() => onFocusPath?.(p)}
+          title={p}
+          style={{
+            display: "block",
+            width: "100%",
+            textAlign: "left",
+            font: "inherit",
+            fontFamily: "ui-monospace, SFMono-Regular, monospace",
+            fontSize: 12,
+            padding: "1px 0",
+            border: "none",
+            background: "transparent",
+            color: theme.text,
+            cursor: "pointer",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            direction: "rtl", // keep the file name visible when the path is cut
+          }}
+        >
+          {"‎" + p}
+        </button>
+      ))}
+      {paths.length > DEP_SHOWN && (
+        <button
+          onClick={() => setAll((a) => !a)}
+          style={{ font: "inherit", fontSize: 11, padding: 0, border: "none", background: "transparent", color: theme.read, cursor: "pointer" }}
+        >
+          {all ? t("detail.fewer") : t("detail.more", { n: paths.length - DEP_SHOWN })}
+        </button>
+      )}
     </div>
   );
 }

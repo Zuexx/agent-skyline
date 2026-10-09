@@ -14,6 +14,7 @@ import { loadZones } from "../lib/zones.mjs";
 import { resolveLogFile, resolveZonesFile } from "../lib/paths.mjs";
 import { rootKey } from "../lib/normalize.mjs";
 import { startWatcher } from "./watch.mjs";
+import { buildDeps } from "./deps.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const defaultWebRoot = path.join(here, "..", "web", "dist"); // step 4 builds this folder
@@ -147,11 +148,21 @@ export function createServer({ repo, logFile, zonesFile, scopeFile = null, webRo
   // Absolute, "/"-separated repo path, so the UI can build editor links (vscode://file/...).
   const repoPath = path.resolve(repo).split(path.sep).join("/");
 
+  let depsCache = null;
+
   async function getCity(forceRescan) {
     if (cityCache && !forceRescan) return cityCache;
     const scanned = scanRepo(repo); // throws if `repo` is not a git work tree -> 500 by the router
     cityCache = { repo, repoPath, ...layout(scanned.files) };
+    depsCache = null; // the file set may have changed
     return cityCache;
+  }
+
+  // Working-tree dependencies, computed on first request and kept until the next rescan.
+  async function getDeps() {
+    const city = await getCity(false);
+    depsCache ??= buildDeps(repo, city.buildings.map((b) => b.path));
+    return depsCache;
   }
 
   // The city of another branch, read from git objects (the working tree is left alone). With a
@@ -290,6 +301,10 @@ export function createServer({ repo, logFile, zonesFile, scopeFile = null, webRo
       if (p === "/api/city" && (req.method === "GET" || req.method === "HEAD")) {
         if (q("ref")) json(res, 200, getRefCity(q("ref"), q("base")));
         else json(res, 200, await getCity(q("rescan") === "1"));
+        return;
+      }
+      if (p === "/api/deps" && req.method === "GET") {
+        json(res, 200, await getDeps());
         return;
       }
       if (p === "/api/branches" && req.method === "GET") {

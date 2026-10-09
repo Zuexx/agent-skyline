@@ -4,6 +4,7 @@ import Buildings from "./Buildings.jsx";
 import Agents from "./Agents.jsx";
 import LockCaps from "./LockCaps.jsx";
 import Pulses from "./Pulses.jsx";
+import Roads from "./Roads.jsx";
 import DistrictLabels from "./DistrictLabels.jsx";
 import { buildingTransform, HEIGHT_SCALE } from "../lib/geometry.js";
 import { theme } from "../theme.js";
@@ -24,6 +25,7 @@ export default function City({
   editing = false,
   onToggleDistrict,
   warnPaths = null,
+  roads = null,
 }) {
   const districtDepthByPath = useMemo(
     () => Object.fromEntries((city.districts ?? []).map((d) => [d.path, d.depth])),
@@ -83,6 +85,7 @@ export default function City({
         activity={activity}
         diff={diff}
       />
+      {roads && <Roads path={roads.path} deps={roads.deps} roofs={roofs} />}
       <Agents agents={activity?.agents} roofs={roofs} />
       <Pulses feed={activity?.feed} bases={bases} ping={ping} />
       <DistrictLabels districts={city.districts} fileCounts={fileCounts} grouped={city.grouped} />

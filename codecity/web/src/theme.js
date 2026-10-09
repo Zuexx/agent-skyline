@@ -27,6 +27,8 @@ export const themes = {
     locked: "#3a1424",
     scope: "#123a2c", // district inside the declared task scope (dark green)
     warn: "#ffd23f", // scope warning cap
+    depUses: "#a78bfa", // road to a file the selection uses
+    depUsedBy: "#ff6fb5", // road from a file that uses the selection
     live: "#3ddc84",
     offline: "#5b6780",
     text: "#e6edf7",
@@ -63,6 +65,8 @@ export const themes = {
     locked: "#f3c0c6",
     scope: "#c7ead8",
     warn: "#e0a800",
+    depUses: "#6d38d6",
+    depUsedBy: "#c2185b",
     live: "#2f9e44",
     offline: "#9aa7b8",
     text: "#16233a",

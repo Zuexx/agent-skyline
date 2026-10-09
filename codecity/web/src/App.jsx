@@ -34,6 +34,7 @@ import { buildingTransform, HEIGHT_SCALE } from "./lib/geometry.js";
 import { buildView } from "./lib/views.js";
 import { pathIndex, pathsInCommand } from "./lib/commandPaths.js";
 import { vscodeUrl } from "./lib/editor.js";
+import { depsOf, useDeps } from "./lib/deps.js";
 
 // Isometric view direction: camera sits on the (1, 1, 1) ray above the origin.
 const ISO = new THREE.Vector3(1, 1, 1).normalize();
@@ -151,6 +152,10 @@ export default function App() {
   const [focus, setFocus] = useState(null);
 
   const indexByPath = useMemo(() => new Map((city?.buildings ?? []).map((b, i) => [b.path, i])), [city]);
+  // Who uses what in the working tree (refetched after a rescan, which replaces liveCity).
+  const depIndex = useDeps(liveCity);
+  const selectedPath = selected != null ? city?.buildings?.[selected]?.path : null;
+  const selectedDeps = useMemo(() => (selectedPath && depIndex ? depsOf(depIndex, selectedPath) : null), [selectedPath, depIndex]);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -339,6 +344,7 @@ export default function App() {
           editing={zoneMode || scopeMode}
           onToggleDistrict={zoneMode ? zones.toggleDistrict : scope.toggleDistrict}
           warnPaths={compare.active ? null : warnPaths}
+          roads={selectedDeps ? { path: selectedPath, deps: selectedDeps } : null}
         />
         {/* Night only: colors pushed above 1.0 (active buildings, pulses, agents) cross the threshold. */}
         {theme.bloom && (
@@ -416,6 +422,8 @@ export default function App() {
           compare={compare}
           change={compare.diff?.get(selectedBuilding.path) ?? null}
           openUrl={liveIndex.has(selectedBuilding.path) ? vscodeUrl(liveCity.repoPath, selectedBuilding.path) : null}
+          deps={selectedDeps}
+          onFocusPath={(p) => focusOn(indexByPath.get(p))}
         />
       )}
     </div>
