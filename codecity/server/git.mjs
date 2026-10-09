@@ -156,7 +156,9 @@ export function diffFiles(root, base, head) {
 export function churn(root, days = 90, maxCommits = 3000) {
   let out = "";
   try {
-    out = git(root, ["log", `--since=${days}.days`, `-n${maxCommits}`, "--no-merges", "--name-only", "--format=%x00", "-z"], {
+    // --no-renames: counting changes per path needs no rename detection, which would read file
+    // contents (and in a partial clone, fetch them over the network: 44 s on VS Code).
+    out = git(root, ["log", `--since=${days}.days`, `-n${maxCommits}`, "--no-merges", "--no-renames", "--name-only", "--format=%x00", "-z"], {
       encoding: "utf8",
     });
   } catch {

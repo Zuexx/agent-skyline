@@ -1,5 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { depsOf, indexDeps } from "./deps.js";
+import { depsOf, indexDeps, unpackDeps } from "./deps.js";
+
+describe("unpackDeps", () => {
+  it("turns the server's index pairs back into path pairs", () => {
+    expect(unpackDeps({ paths: ["a.ts", "b.ts", "c.ts"], edges: [0, 1, 2, 1] })).toEqual([
+      ["a.ts", "b.ts"],
+      ["c.ts", "b.ts"],
+    ]);
+  });
+
+  it("passes an older server's path pairs through", () => {
+    expect(unpackDeps({ edges: [["a.ts", "b.ts"]] })).toEqual([["a.ts", "b.ts"]]);
+  });
+});
 
 describe("deps index", () => {
   const index = indexDeps([

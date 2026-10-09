@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { buildDeps, joinRepo, readsFile } from "../server/deps.mjs";
+import { buildDeps, joinRepo, packDeps, readsFile } from "../server/deps.mjs";
 import { refReader } from "../server/git.mjs";
 
 async function repo(t, files) {
@@ -18,6 +18,11 @@ async function repo(t, files) {
 }
 
 const sorted = (edges) => edges.map(([a, b]) => `${a} -> ${b}`).sort();
+
+test("packDeps sends each path once and edges as index pairs", () => {
+  const packed = packDeps({ edges: [["a.ts", "b.ts"], ["c.ts", "b.ts"]], truncated: false });
+  assert.deepEqual(packed, { paths: ["a.ts", "b.ts", "c.ts"], edges: [0, 1, 2, 1], truncated: false });
+});
 
 test("joinRepo normalizes and refuses to leave the repo", () => {
   assert.equal(joinRepo("a/b", "../c/./d"), "a/c/d");

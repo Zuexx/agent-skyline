@@ -42,6 +42,8 @@ import { fetchWorkingDiff, useWorking } from "./lib/useWorking.js";
 import { fetchFileDiff } from "./lib/useCompare.js";
 import ReviewPanel from "./ui/ReviewPanel.jsx";
 import TaskPanel from "./ui/TaskPanel.jsx";
+import LabelLayer from "./ui/LabelLayer.jsx";
+import { createLabelBus } from "./city/DistrictLabels.jsx";
 import { pathsInRect, rectFrom, toggleAll } from "./lib/selection.js";
 
 // Isometric view direction: camera sits on the (1, 1, 1) ray above the origin.
@@ -211,6 +213,8 @@ export default function App() {
   // Follow mode: the camera glides to wherever the latest event happened. Off by default, so the
   // page opens on the whole city.
   const [follow, setFollow] = useState(false);
+  // District signs: chosen and positioned by the scene, drawn by an overlay (see DistrictLabels.jsx).
+  const labelBus = useMemo(createLabelBus, []);
   // Select mode: drag a box (or click buildings) to pick files, then turn them into a task.
   const [pickMode, setPickMode] = useState(false);
   const [picked, setPicked] = useState(() => new Set());
@@ -405,6 +409,13 @@ export default function App() {
     const dist = Math.max(Number(liveCity.width) || 0, Number(liveCity.depth) || 0) * 1.2 + 30;
     return ISO.clone().multiplyScalar(dist).toArray();
   }, [liveCity]);
+  // The default far plane (2,000) clipped big cities: VS Code is 1,880 deep and the camera sits
+  // ~2,300 away. Reach past the whole city from any angle the controls allow.
+  const cameraFar = useMemo(() => {
+    const w = Math.max(Number(liveCity?.width) || 0, Number(compare.city?.width) || 0);
+    const d = Math.max(Number(liveCity?.depth) || 0, Number(compare.city?.depth) || 0);
+    return Math.max(2000, (Math.max(w, d) * 1.2 + 30 + Math.hypot(w, d)) * 2);
+  }, [liveCity, compare.city]);
 
   // World position (city centered at the origin) of building i in the current view.
   const worldOf = (i) => {
@@ -487,7 +498,7 @@ export default function App() {
         <color attach="background" args={[theme.background]} />
         <hemisphereLight args={[theme.hemiSky, theme.hemiGround, theme.hemiIntensity]} />
         <directionalLight position={[-6, 10, 3]} intensity={theme.keyIntensity} color={theme.keyLight} />
-        <OrthographicCamera makeDefault position={cameraPosition} />
+        <OrthographicCamera makeDefault position={cameraPosition} far={cameraFar} />
         {/* Pan + zoom; rotation clamped above ground. Grabbing the map turns follow mode off.
             The wheel zooms toward the cursor (like a map), about 8% per notch. */}
         <MapControls makeDefault zoomToCursor zoomSpeed={1.6} maxPolarAngle={Math.PI / 2 - 0.05} onStart={() => setFollow(false)} />
@@ -526,6 +537,7 @@ export default function App() {
           warnPaths={compare.active ? null : warnPaths}
           roads={selectedDeps ? { path: selectedPath, deps: selectedDeps } : null}
           picked={picked}
+          labelBus={labelBus}
         />
         {/* Night only: colors pushed above 1.0 (active buildings, pulses, agents) cross the threshold. */}
         {theme.bloom && (
@@ -534,6 +546,7 @@ export default function App() {
           </EffectComposer>
         )}
       </Canvas>
+      <LabelLayer bus={labelBus} grouped={view.grouped} />
       <TopBar
         repo={liveCity.repo ?? ""}
         buildingCount={city.buildings?.length ?? 0}

@@ -27,6 +27,7 @@ export default function City({
   warnPaths = null,
   roads = null,
   picked = null,
+  labelBus = null,
 }) {
   const districtDepthByPath = useMemo(
     () => Object.fromEntries((city.districts ?? []).map((d) => [d.path, d.depth])),
@@ -90,7 +91,7 @@ export default function City({
       {roads && <Roads path={roads.path} deps={roads.deps} roofs={roofs} />}
       <Agents agents={activity?.agents} roofs={roofs} />
       <Pulses feed={activity?.feed} bases={bases} ping={ping} />
-      <DistrictLabels districts={city.districts} fileCounts={fileCounts} grouped={city.grouped} />
+      {labelBus && <DistrictLabels districts={city.districts} fileCounts={fileCounts} bus={labelBus} />}
     </group>
   );
 }

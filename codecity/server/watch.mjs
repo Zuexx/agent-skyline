@@ -23,7 +23,12 @@ export function notIgnored(repo, paths) {
   if (!paths.length) return [];
   let ignored = "";
   try {
-    ignored = execFileSync("git", ["check-ignore", "--stdin", "-z"], { cwd: repo, input: paths.join("\0") + "\0", encoding: "utf8" });
+    ignored = execFileSync("git", ["check-ignore", "--stdin", "-z"], {
+      cwd: repo,
+      input: paths.join("\0") + "\0",
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024, // a branch switch in a big repo can touch thousands of paths at once
+    });
   } catch (err) {
     // Exit code 1 means "none of them are ignored"; anything else: be safe and report nothing.
     if (err.status === 1) return paths;

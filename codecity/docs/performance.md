@@ -46,6 +46,45 @@ per second and froze the tab.
    candidates are visited now: files with activity, files in the compared diff, and buildings not
    currently in the base color.
 
+## A real repo: VS Code (20,323 files)
+
+Measured on 2026-10-09 against a shallow clone of `microsoft/vscode` (20,323 files, 14,848 JS/TS
+sources, 4,602 folders). The synthetic repo has the same file count, but a real one has long
+paths, deep folders and real imports, and that found five problems the synthetic one could not:
+
+| Problem | Effect | Fix |
+|---|---|---|
+| `git ls-files` output over 1 MB (long paths) | The server could not open the repo at all (`ENOBUFS`) | `maxBuffer` raised, as in `git.mjs` |
+| City 1,880 units deep, camera ~2,300 away | Most of the city was cut off by the camera's default far plane (2,000) | Far plane sized from the city |
+| 4,602 districts, signs as drei `<Html>` | Zooming mounted and unmounted hundreds of React roots at once; React threw (`removeChild`) | Signs are one DOM overlay, positioned by the scene each frame |
+| Dependency parsing capped at 8,000 files | Stopped halfway through the alphabet: most of `src/vs` had no roads | Cap raised to 40,000 (parsing is ~0.12 ms per file) |
+| 139,456 dependency edges as path pairs | `/api/deps` was 17 MB of JSON | Paths sent once, edges as index pairs: 2.4 MB |
+
+Server, after the fixes (second run; see "First run" below):
+
+| Step | Time |
+|---|---:|
+| Scan (file list + line counts) | 1.7–1.9 s |
+| Layout | 47 ms |
+| Dependencies (14,848 sources, 139,456 edges) | 1.9 s |
+| Churn, last 90 days | 0.3 s |
+| Uncommitted changes | 0.7 s |
+| `/api/city` / `/api/deps` | 3.2 MB / 2.4 MB |
+
+Browser, same method as above (3,000 events of history, 10 live events a second): first load
+162–171 ms, main thread about 85% idle, replay at 8× just as smooth, 37–42 MB JS heap. Selecting a
+building and drawing its roads takes about 50 ms.
+
+**First run.** The very first scan after the clone took 146 s, the second 1.9 s. Every file is
+opened once to count lines, and Windows Defender's real-time protection (on) scans each file on
+first open; that is the likely cause, not proven. The first churn took 44 s because the clone was
+partial (`--filter=blob:none`) and rename detection fetched file contents over the network; churn
+now runs with `--no-renames`, which never needs contents.
+
+**Still open.** With deep folder trees the layout leaves wide empty margins between districts, so
+at overview VS Code's buildings look small and sparse. Readable when zoomed in, but worth a better
+packing later.
+
 ## Reproduce
 
 ```bash

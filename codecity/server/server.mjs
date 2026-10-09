@@ -14,7 +14,7 @@ import { loadZones } from "../lib/zones.mjs";
 import { resolveLogFile, resolveZonesFile } from "../lib/paths.mjs";
 import { rootKey } from "../lib/normalize.mjs";
 import { startWatcher } from "./watch.mjs";
-import { buildDeps, readsFile } from "./deps.mjs";
+import { buildDeps, packDeps, readsFile } from "./deps.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const defaultWebRoot = path.join(here, "..", "web", "dist"); // step 4 builds this folder
@@ -324,8 +324,8 @@ export function createServer({ repo, logFile, zonesFile, scopeFile = null, webRo
         if (q("ref")) {
           // Another branch: read its sources from git objects, the working tree is not touched.
           const { paths, read } = refReader(repo, q("ref"), readsFile);
-          json(res, 200, buildDeps(repo, paths, read));
-        } else json(res, 200, await getDeps());
+          json(res, 200, packDeps(buildDeps(repo, paths, read)));
+        } else json(res, 200, packDeps(await getDeps()));
         return;
       }
       if (p === "/api/branches" && req.method === "GET") {

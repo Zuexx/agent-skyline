@@ -301,6 +301,20 @@ Colors are explained in the legend at the bottom right.
     a picker offers today, a past session (closed, with a "Past work" badge, since live events are
     not shown) or everything. The raw events stay in the page and a range change re-folds them;
     the log on disk is untouched.
+47. **"Done" alerts, conflicts, agent filter**: Claude Code's Stop hook and pi's `agent_end`
+    become "stop" events; each raises an alert with what that turn changed (files, warnings,
+    blocks), and clicking it opens the review list. Two different agents writing one file within
+    ten minutes is a conflict warning, in the same shape as scope warnings so the feed, caps,
+    review list and alerts need no new paths. An agent picker narrows the view to one agent;
+    numbering is fixed by the whole time range, and alerts and conflict checks keep watching every
+    agent (they read the unfiltered stream). forgekit's `settings.local.json` gained the Stop hook
+    (the same file the user authorized for CodeCity's hooks).
+48. **A real repo (VS Code) found five bugs the synthetic one could not** (details in
+    `docs/performance.md`): the server could not open it (`git ls-files` over 1 MB), the camera's
+    far plane cut most of the city off, 4,602 district signs as drei `<Html>` made React throw,
+    dependency parsing stopped at 8,000 of 14,848 sources, and `/api/deps` was 17 MB. All fixed;
+    signs are now one DOM overlay positioned by the scene. Lesson: synthetic data had the right
+    size but the wrong shape (short paths, shallow folders, no imports).
 
 ## ⚠️ Incident: pi killed every Node process (step 3 Part C)
 

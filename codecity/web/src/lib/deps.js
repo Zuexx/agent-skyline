@@ -14,6 +14,16 @@ export function indexDeps(edges = []) {
   return { uses, usedBy };
 }
 
+/** Edge pairs from the server's packed form ({ paths, edges: flat index pairs }, see deps.mjs). */
+export function unpackDeps({ paths = [], edges = [] }) {
+  // An older server sends [[from, to], ...] directly; a page reloaded before the server restarts
+  // must still work.
+  if (Array.isArray(edges[0])) return edges;
+  const out = new Array(Math.floor(edges.length / 2));
+  for (let k = 0; k < out.length; k++) out[k] = [paths[edges[2 * k]], paths[edges[2 * k + 1]]];
+  return out;
+}
+
 /** What one file uses, what uses it, and which of those users are tests. */
 export function depsOf(index, path) {
   const uses = index?.uses.get(path) ?? [];
@@ -39,5 +49,5 @@ export function useDeps(cityKey, ref = null) {
       cancelled = true;
     };
   }, [cityKey, ref]);
-  return useMemo(() => (data ? { ...indexDeps(data.edges), truncated: data.truncated } : null), [data]);
+  return useMemo(() => (data ? { ...indexDeps(unpackDeps(data)), truncated: data.truncated } : null), [data]);
 }

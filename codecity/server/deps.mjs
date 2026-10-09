@@ -14,7 +14,10 @@ import { readFileSync, statSync } from "node:fs";
 import path from "node:path";
 
 const MAX_FILE_BYTES = 512 * 1024;
-const MAX_PARSED_FILES = 8000; // beyond this the city is too dense for roads to be readable anyway
+// Parsing is about 0.12 ms per file (VS Code: 8,000 files in 0.9 s), so even a large repo stays a
+// few seconds, once, on the first /api/deps. A cap at 8,000 cut VS Code (14,848 sources) halfway
+// through the alphabet, leaving most of src/vs without roads.
+const MAX_PARSED_FILES = 40000;
 
 const JS_EXT = /\.(m|c)?(j|t)sx?$/i;
 const CS_EXT = /\.cs$/i;
@@ -171,6 +174,27 @@ function csEdges(parsed) {
     edges.set(p, out);
   }
   return edges;
+}
+
+/**
+ * Wire form of buildDeps' result: { paths, edges: [from0, to0, from1, to1, ...] as indexes into
+ * paths, truncated }. Repeating both full paths per edge made VS Code's 139k edges 17 MB of JSON;
+ * this is 2.4 MB. The UI unpacks it (web/src/lib/deps.js).
+ */
+export function packDeps({ edges, truncated }) {
+  const index = new Map();
+  const paths = [];
+  const id = (p) => {
+    let i = index.get(p);
+    if (i === undefined) index.set(p, (i = paths.push(p) - 1));
+    return i;
+  };
+  const flat = new Array(edges.length * 2);
+  edges.forEach(([from, to], k) => {
+    flat[2 * k] = id(from);
+    flat[2 * k + 1] = id(to);
+  });
+  return { paths, edges: flat, truncated };
 }
 
 /**

@@ -10,7 +10,8 @@ const MAX_COUNTED_BYTES = 2 * 1024 * 1024; // files over this size get lines: 0
 const BINARY_PROBE_BYTES = 8000; // a \0 within the first N bytes means binary
 
 export function scanRepo(root) {
-  const out = execFileSync("git", ["ls-files", "-z"], { cwd: root, encoding: "buffer" });
+  // The default 1 MB output cap is not enough for a big repo's file list (VS Code's is over 1 MB).
+  const out = execFileSync("git", ["ls-files", "-z"], { cwd: root, encoding: "buffer", maxBuffer: 256 * 1024 * 1024 });
 
   // -z output is NUL-separated; split manually so paths with any byte survive.
   const paths = [];
