@@ -143,6 +143,24 @@ Plan in two stages: (1) terrain, regional landforms, cel shading, fog of war; (2
 paths and rivers, props. Measure performance at 20,000 files before stage 2: grass and props
 will need thinning or zoom-dependent display, and the 60 fps of the minimal city may not hold.
 
+### Later: people who do not use git
+
+Raised on 2026-10-09; parked. CodeCity needs the watched folder to be a git repository, and a
+command line to start. Non-programmers have neither habit. Planned in three layers:
+
+1. **A shadow repository**: CodeCity keeps its own git history for the folder inside its data
+   directory (`git --git-dir=<codecity data>/shadow/<key> --work-tree=<folder>`), so the folder
+   gets no `.git` and nothing in it changes. A snapshot at the start of each working session is
+   the baseline, which keeps "what did the agent change" with per-file diffs, the review list and
+   churn working. The git program is still needed, but Claude Code on Windows already requires
+   Git for Windows.
+2. **No git at all**: walk the folder directly (skipping `node_modules`, hidden folders and the
+   like). The city, live activity, zones, scope checks and alerts still work; diffs and branch
+   comparison are hidden, since there is no baseline.
+3. **Double-click start**: a launcher that asks for a folder, installs the hooks, starts the
+   server and opens the browser (a Windows `.cmd` with a folder picker first; a desktop app if it
+   is ever distributed).
+
 ## Technology
 
 | Purpose | Choice |
