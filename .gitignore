@@ -1,0 +1,8 @@
+*.mp4
+*.webm
+*.mkv
+
+# CodeCity: dependencies, build output, and live data (event log, locked zones) stay local
+node_modules/
+codecity/web/dist/
+codecity/data/

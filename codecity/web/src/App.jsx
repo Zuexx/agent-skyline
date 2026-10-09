@@ -1,0 +1,337 @@
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import * as THREE from "three";
+import { Canvas, useThree } from "@react-three/fiber";
+import { MapControls, OrthographicCamera } from "@react-three/drei";
+import { Bloom, EffectComposer } from "@react-three/postprocessing";
+import CameraFollow from "./city/CameraFollow.jsx";
+import City from "./city/City.jsx";
+import Legend from "./ui/Legend.jsx";
+import ZoneBanner from "./ui/ZoneBanner.jsx";
+import TopBar from "./ui/TopBar.jsx";
+import DetailPanel from "./ui/DetailPanel.jsx";
+import Feed from "./ui/Feed.jsx";
+import CompareSummary from "./ui/CompareSummary.jsx";
+import { useActivity } from "./lib/useActivity.js";
+import { useZones } from "./lib/useZones.js";
+import { useCompare } from "./lib/useCompare.js";
+import { usePrefs } from "./lib/usePrefs.js";
+import { parentDir } from "./lib/parent.js";
+import { applyTheme, theme } from "./theme.js";
+import { setLocale, t } from "./lib/i18n.js";
+import { buildingTransform, HEIGHT_SCALE } from "./lib/geometry.js";
+import { buildView } from "./lib/views.js";
+import { pathIndex, pathsInCommand } from "./lib/commandPaths.js";
+
+// Isometric view direction: camera sits on the (1, 1, 1) ray above the origin.
+const ISO = new THREE.Vector3(1, 1, 1).normalize();
+
+/**
+ * Fit: re-center on the city and set the ortho zoom so its footprint fits the viewport.
+ * Projects the centered W x D rectangle onto the camera's screen axes and takes the smaller of
+ * the two required zooms (with a margin).
+ */
+function FitCamera({ width, depth, nonce }) {
+  const camera = useThree((s) => s.camera);
+  const controls = useThree((s) => s.controls);
+  // Re-fit when the canvas settles or the window is resized, not only on data changes.
+  const size = useThree((s) => s.size);
+
+  useLayoutEffect(() => {
+    if (!camera.isOrthographicCamera) return; // wait for drei's makeDefault swap
+    if (controls) {
+      const dist = camera.position.distanceTo(controls.target);
+      controls.target.set(0, 0, 0);
+      camera.position.copy(ISO).multiplyScalar(dist);
+      controls.update();
+    }
+    const w = Number(width) || 0;
+    const d = Number(depth) || 0;
+    if (w <= 0 && d <= 0) return;
+
+    const f = ISO.clone().negate(); // view direction, camera -> origin
+    const r = new THREE.Vector3(0, 1, 0).cross(f).normalize(); // screen right
+    const u = f.clone().negate().cross(r); // screen up (camera Y axis)
+
+    const projHalfW = (w / 2) * Math.abs(r.x) + (d / 2) * Math.abs(r.z);
+    const projHalfH = (w / 2) * Math.abs(u.x) + (d / 2) * Math.abs(u.z);
+    if (projHalfW <= 0 || projHalfH <= 0) return;
+
+    // Frustum half-size at zoom 1, independent of the current zoom.
+    const viewHalfW = (camera.right - camera.left) / 2;
+    const viewHalfH = (camera.top - camera.bottom) / 2;
+    camera.zoom = Math.min(viewHalfW / projHalfW, viewHalfH / projHalfH) * 0.85;
+    camera.userData.fitZoom = camera.zoom; // CameraFollow zooms relative to this
+    camera.updateProjectionMatrix();
+  }, [camera, controls, width, depth, nonce, size.width, size.height]);
+
+  return null;
+}
+
+// Deepest district containing the file: longest district path that is an
+// ancestor of (or equal to) the file's parent directory.
+function districtPathFor(building, districts = []) {
+  const dir = parentDir(building.path);
+  let best = "";
+  for (const d of districts) {
+    if ((dir === d.path || dir.startsWith(d.path + "/")) && d.path.length > best.length) best = d.path;
+  }
+  return best;
+}
+
+function Status({ children }) {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: theme.background,
+        color: theme.text,
+        fontFamily: "system-ui, sans-serif",
+        fontSize: 15,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+export default function App() {
+  // Preferences first: theme and language must be applied before anything renders this pass.
+  const { prefs, resolvedTheme, setTheme, setLocale: setLocalePref } = usePrefs();
+  applyTheme(resolvedTheme);
+  setLocale(prefs.locale);
+
+  // The working tree's city (what the agent is editing right now).
+  const [liveCity, setLiveCity] = useState(null);
+  const [error, setError] = useState(null);
+  const compare = useCompare();
+  // What is drawn: the compared branch's city while comparing, otherwise the working tree.
+  const city = compare.active ? compare.city : liveCity;
+
+  // Index into city.buildings of the selected building (null = none).
+  const [selected, setSelected] = useState(null);
+  // Index of the working tree's paths, so Bash commands that name files light those buildings up.
+  const cmdIndex = useMemo(() => (liveCity ? pathIndex(liveCity.buildings.map((b) => b.path)) : null), [liveCity]);
+  // Connect only once the city is known, so replayed commands can be resolved to files.
+  const { activity, connected } = useActivity(cmdIndex ? "/api/events" : null, (cmd) => pathsInCommand(cmd, cmdIndex));
+  // How files are grouped into districts: folder / role / touched / diff (see lib/views.js).
+  const [viewId, setViewId] = useState("folder");
+  const zones = useZones();
+  // In zone mode clicks lock/unlock districts instead of selecting buildings.
+  const [zoneMode, setZoneMode] = useState(false);
+  // Follow mode: the camera glides to wherever the latest event happened. Off by default, so the
+  // page opens on the whole city.
+  const [follow, setFollow] = useState(false);
+  // Bumped to re-frame the whole city (view switch, the overview button).
+  const [fitNonce, setFitNonce] = useState(0);
+  // One-off camera flight + ring (feed click, double-click on a building).
+  const [focus, setFocus] = useState(null);
+
+  const indexByPath = useMemo(() => new Map((city?.buildings ?? []).map((b, i) => [b.path, i])), [city]);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        setSelected(null);
+        setZoneMode(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/city")
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
+      .then((data) => !cancelled && setLiveCity(data))
+      .catch((err) => !cancelled && setError(err?.message || String(err)));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Entering or leaving a comparison swaps the whole building set: clear the selection, offer the
+  // diff grouping while comparing, and fall back to folders when it goes away.
+  useEffect(() => {
+    setSelected(null);
+    setFitNonce((n) => n + 1);
+    if (!compare.active) setViewId((v) => (v === "diff" ? "folder" : v));
+  }, [compare.active, compare.head, compare.base]);
+
+  // Grouped views re-lay out only when a file changes group, not on every event.
+  const touchedKey = useMemo(() => {
+    if (viewId !== "touched") return "";
+    return Object.entries(activity.files)
+      .map(([p, f]) => p + (f.writes > 0 || f.blocked > 0 ? ":w" : f.reads > 0 ? ":r" : ""))
+      .sort()
+      .join("|");
+  }, [viewId, activity.files]);
+  const view = useMemo(
+    () => (city ? buildView(city, viewId, { files: activity.files, diff: compare.diff }) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [city, viewId, touchedKey, compare.diff]
+  );
+
+  // A file the agent created is not a building yet: the city was scanned before it existed.
+  // When activity names repo paths the working tree city does not know, rescan (debounced, once
+  // per distinct set, so a path that never shows up cannot cause a refetch loop).
+  const liveIndex = useMemo(() => new Set((liveCity?.buildings ?? []).map((b) => b.path)), [liveCity]);
+  const unknownKey = useMemo(
+    () =>
+      Object.keys(activity.files)
+        .filter((p) => !liveIndex.has(p) && !p.startsWith("/") && !/^[a-z]:\//i.test(p))
+        .sort()
+        .join("|"),
+    [activity.files, liveIndex]
+  );
+  const rescanned = useRef(new Set());
+  useEffect(() => {
+    if (!unknownKey || rescanned.current.has(unknownKey)) return undefined;
+    rescanned.current.add(unknownKey);
+    const timer = setTimeout(() => {
+      fetch("/api/city?rescan=1")
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (!data) return;
+          if (!compare.active) setSelected(null); // building indexes change with the file set
+          setLiveCity(data);
+        })
+        .catch(() => {});
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [unknownKey, compare.active]);
+
+  const cameraPosition = useMemo(() => {
+    if (!liveCity) return [1, 1, 1];
+    const dist = Math.max(Number(liveCity.width) || 0, Number(liveCity.depth) || 0) * 1.2 + 30;
+    return ISO.clone().multiplyScalar(dist).toArray();
+  }, [liveCity]);
+
+  // World position (city centered at the origin) of building i in the current view.
+  const worldOf = (i) => {
+    const { position } = buildingTransform(view.buildings[i], {}, HEIGHT_SCALE);
+    return [position[0] - view.width / 2, 0, position[2] - view.depth / 2];
+  };
+
+  // Newest event that names a known building, for follow mode.
+  const latestTarget = useMemo(() => {
+    if (!view) return null;
+    for (const ev of activity.feed) {
+      const i = indexByPath.get(ev.paths?.[0] ?? ev.readPaths?.[0]);
+      if (i != null) return worldOf(i);
+    }
+    return null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activity.feed, view, indexByPath]);
+
+  const focusOn = (i) => {
+    if (i == null || !view) return;
+    setSelected(i);
+    setFollow(false);
+    setFocus({ target: worldOf(i), path: view.buildings[i].path, nonce: Date.now() });
+  };
+
+  if (error) return <Status>{t("app.loadError", { error })}</Status>;
+  if (!liveCity || !view) return <Status>{t("app.loading")}</Status>;
+
+  const selectedBuilding = selected != null ? city.buildings?.[selected] : null;
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        cursor: zoneMode ? "crosshair" : "auto",
+        background: theme.background,
+        // Native widgets (scrollbars, selects) follow the theme instead of the OS default.
+        colorScheme: theme.bloom ? "dark" : "light",
+        scrollbarColor: `${theme.panelBorder} transparent`,
+      }}
+    >
+      {/* Keyed by theme: materials are created with the palette's colors, so a theme switch rebuilds the scene. */}
+      <Canvas key={theme.name} flat onPointerMissed={() => setSelected(null)}>
+        <color attach="background" args={[theme.background]} />
+        <hemisphereLight args={[theme.hemiSky, theme.hemiGround, theme.hemiIntensity]} />
+        <directionalLight position={[-6, 10, 3]} intensity={theme.keyIntensity} color={theme.keyLight} />
+        <OrthographicCamera makeDefault position={cameraPosition} />
+        {/* Pan + zoom; rotation clamped above ground. Grabbing the map turns follow mode off. */}
+        <MapControls makeDefault maxPolarAngle={Math.PI / 2 - 0.05} onStart={() => setFollow(false)} />
+        <CameraFollow target={latestTarget} enabled={follow} focus={focus} />
+        <FitCamera width={view.width} depth={view.depth} nonce={fitNonce} />
+        <City
+          city={view}
+          selected={selected}
+          onSelect={(i) => {
+            // A building click in zone mode means its parent district.
+            if (zoneMode) zones.toggleDistrict(districtPathFor(city.buildings[i], city.districts));
+            else setSelected(i);
+          }}
+          onFocus={(i) => !zoneMode && focusOn(i)}
+          activity={activity}
+          diff={compare.active ? compare.diff : null}
+          ping={focus}
+          locked={compare.active ? [] : zones.locked}
+          zoneMode={zoneMode}
+          onToggleDistrict={zones.toggleDistrict}
+        />
+        {/* Night only: colors pushed above 1.0 (active buildings, pulses, agents) cross the threshold. */}
+        {theme.bloom && (
+          <EffectComposer>
+            <Bloom mipmapBlur intensity={1.4} luminanceThreshold={1} luminanceSmoothing={0.2} />
+          </EffectComposer>
+        )}
+      </Canvas>
+      <TopBar
+        repo={liveCity.repo ?? ""}
+        buildingCount={city.buildings?.length ?? 0}
+        districtCount={city.districts?.length ?? 0}
+        connected={connected}
+        follow={follow}
+        onToggleFollow={() => setFollow((f) => !f)}
+        onFit={() => {
+          setFollow(false);
+          setFitNonce((n) => n + 1);
+        }}
+        viewId={viewId}
+        onChangeView={(id) => {
+          setViewId(id);
+          setFollow(false);
+          setFitNonce((n) => n + 1);
+          if (id !== "folder") setZoneMode(false); // zones are folders; locking needs the folder view
+        }}
+        compare={compare}
+        zoneMode={zoneMode}
+        onToggleZoneMode={() => {
+          compare.setHead(null); // zones apply to the working tree, not to another branch
+          setViewId("folder");
+          setZoneMode((z) => !z);
+          setSelected(null);
+        }}
+        lockedCount={zones.locked.length}
+        zonesStatus={zones.status}
+        zonesError={zones.error}
+        themePref={prefs.theme}
+        onTheme={setTheme}
+        locale={prefs.locale}
+        onLocale={setLocalePref}
+      />
+      {zoneMode && <ZoneBanner locked={zones.locked} onUnlockDistrict={zones.toggleDistrict} onDone={() => setZoneMode(false)} />}
+      <CompareSummary compare={compare} onClose={() => compare.setHead(null)} />
+      <Legend comparing={compare.active} />
+      <Feed feed={activity.feed} agentSeq={activity.agentSeq} onFocusPath={(p) => focusOn(indexByPath.get(p))} />
+      {selectedBuilding && (
+        <DetailPanel
+          building={selectedBuilding}
+          districtPath={districtPathFor(selectedBuilding, city.districts)}
+          fileActivity={activity.files[selectedBuilding.path]}
+          compare={compare}
+          change={compare.diff?.get(selectedBuilding.path) ?? null}
+        />
+      )}
+    </div>
+  );
+}
