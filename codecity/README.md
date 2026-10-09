@@ -102,7 +102,7 @@ afterwards.
 | Activity | Bottom left; filter, scroll back; click a file to fly there, click a command to expand it |
 | Compare | Pick a branch to compare with main; the city is colored by git diff; click a building for its diff |
 | File details | Click a building: lines, activity, its **uncommitted diff** (or the branch's diff when comparing), **Open in VS Code** |
-| Dependency roads | Clicking a building also draws arcs: violet to what it uses, pink from what uses it, green from its tests (JS/TS imports, C# type use; the panel lists them) |
+| Dependency roads | Clicking a building also draws arcs: violet to what it uses, pink from what uses it, green from its tests (JS/TS imports, C# type use; the panel lists them). A JS/TS import whose names are never used is a grey dashed road, tagged "unused" in the panel and counted in the review list |
 | Review list | List icon: the compared branch's changes, or everything uncommitted plus this session's writes, riskiest first, with reasons (warnings, no tests, recent churn, many dependents, large change). Tick files off as you go |
 | Assign a task | Select icon → drag a box over buildings (or click them). Copy the task with the files as its scope, or save them as the task scope |
 | Task scope | Flag icon → click districts; writes outside raise a warning. With nothing declared, the scope is inferred |

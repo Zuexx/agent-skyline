@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { buildDeps, joinRepo, packDeps, readsFile } from "../server/deps.mjs";
+import { buildDeps, clauseNames, joinRepo, packDeps, readsFile } from "../server/deps.mjs";
 import { refReader } from "../server/git.mjs";
 
 async function repo(t, files) {
@@ -21,7 +21,40 @@ const sorted = (edges) => edges.map(([a, b]) => `${a} -> ${b}`).sort();
 
 test("packDeps sends each path once and edges as index pairs", () => {
   const packed = packDeps({ edges: [["a.ts", "b.ts"], ["c.ts", "b.ts"]], truncated: false });
-  assert.deepEqual(packed, { paths: ["a.ts", "b.ts", "c.ts"], edges: [0, 1, 2, 1], truncated: false });
+  assert.deepEqual(packed, { paths: ["a.ts", "b.ts", "c.ts"], edges: [0, 1, 2, 1], unused: [], truncated: false });
+  assert.deepEqual(packDeps({ edges: [["a.ts", "b.ts", "unused"]], truncated: false }).unused, [0]);
+});
+
+test("clauseNames lists the local names an import binds", () => {
+  assert.deepEqual(clauseNames("React, { useState as useS, type FC }"), ["useS", "FC", "React"]);
+  assert.deepEqual(clauseNames("* as path"), ["path"]);
+  assert.deepEqual(clauseNames("def"), ["def"]);
+});
+
+test("JS/TS: an import whose names are never used is marked unused, other forms are not", async (t) => {
+  const { dir, paths } = await repo(t, {
+    "src/lib.ts": "export const a = 1; export const b = 2; export type T = number;\n",
+    "src/used.ts": 'import { a } from "./lib";\nconsole.log(a);\n',
+    "src/leftover.ts": 'import { a, b } from "./lib";\n// a is only mentioned in this comment\nexport const x = 1;\n',
+    "src/ns.ts": 'import * as lib from "./lib";\nexport const y = lib.a;\n',
+    "src/typeonly.ts": 'import type { T } from "./lib";\nexport const z: T = 1;\n',
+    "src/reexport.ts": 'export { a } from "./lib";\n',
+    "src/side.ts": 'import "./lib";\n',
+    "src/jsx.tsx": 'import { a as Thing } from "./lib";\nexport const v = <Thing />;\n',
+    "src/commented.tsx": '// import { a } from "./lib"\n/* import { b } from "./lib" */\nexport const w = 1;\n',
+  });
+  const { edges } = buildDeps(dir, paths);
+  const marks = Object.fromEntries(edges.map(([from, , flag]) => [from, flag ?? "used"]));
+  assert.deepEqual(marks, {
+    "src/used.ts": "used",
+    "src/leftover.ts": "unused",
+    "src/ns.ts": "used",
+    "src/typeonly.ts": "used",
+    "src/reexport.ts": "used",
+    "src/side.ts": "used",
+    "src/jsx.tsx": "used",
+    // src/commented.tsx: a commented-out import is no edge at all
+  });
 });
 
 test("joinRepo normalizes and refuses to leave the repo", () => {

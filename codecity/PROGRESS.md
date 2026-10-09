@@ -315,6 +315,16 @@ Colors are explained in the legend at the bottom right.
     dependency parsing stopped at 8,000 of 14,848 sources, and `/api/deps` was 17 MB. All fixed;
     signs are now one DOM overlay positioned by the scene. Lesson: synthetic data had the right
     size but the wrong shape (short paths, shallow folders, no imports).
+49. **Unused imports**: asked "what if an import is superfluous?". C# already ignores an unused
+    `using` (an edge needs the type named in the code). JS/TS counted any import, so the names an
+    import binds are now checked against the rest of the file (comments and the import lines
+    themselves left out); re-exports, side-effect imports, `require` and dynamic `import()`
+    always count. An unused import stays a road, since it still loads at run time, but is drawn
+    grey and dashed, tagged in the panel, and is a review reason. The real-repo check found one
+    true case in forgekit (`Input` in sign-up-card.tsx) and one false road that had been there
+    all along: a commented-out import line. Imports inside comments now make no road at all.
+    Also: the event stream now sends a line at once, so a repo with no events yet no longer shows
+    "offline" for the first 15 seconds.
 
 ## ⚠️ Incident: pi killed every Node process (step 3 Part C)
 

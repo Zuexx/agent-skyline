@@ -6,6 +6,7 @@
 //   usedBy       many files depend on it, so a mistake spreads
 //   big          a large change (diff lines while comparing, repeated writes while live)
 //   deletedUsed  a deleted file that other files still use
+//   unusedImport JS/TS imports whose names the file never uses (left over from an edit)
 // Tests, docs and assets count for less: a mistake there rarely breaks the product.
 import { depsOf } from "./deps.js";
 import { roleOf } from "./views.js";
@@ -34,6 +35,11 @@ export function rankReview(items, ctx = {}) {
     if (role === "code" && it.status !== "D" && ctx.deps && d.testedBy.length === 0) {
       score += 3;
       reasons.push({ key: "untested" });
+    }
+    // Leftover imports: cheap to fix, and a sign the edit was not cleaned up.
+    if (it.status !== "D" && d.unusedUses?.size > 0) {
+      score += 1;
+      reasons.push({ key: "unusedImport", n: d.unusedUses.size });
     }
     const commits = ctx.churn?.[it.path] ?? 0;
     score += Math.min(commits, 15) / 5;

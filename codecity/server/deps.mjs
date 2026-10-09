@@ -8,7 +8,12 @@
 //   `class/record/interface/enum/struct` declarations. Good enough to say "who uses this", not a
 //   compiler: a type name that happens to appear in a comment can add an edge.
 //
-// Returns { edges: [[from, to], ...], truncated } with repo paths, deduplicated, no self-edges.
+// JS/TS imports whose names the file never uses are kept, marked "unused": a leftover import is
+// still loaded at run time, and is worth a look in review. (C# needs no such mark: an edge there
+// already means the type is named in the code.)
+//
+// Returns { edges: [[from, to] or [from, to, "unused"], ...], truncated } with repo paths,
+// deduplicated, no self-edges.
 
 import { readFileSync, statSync } from "node:fs";
 import path from "node:path";
@@ -116,19 +121,67 @@ function aliasTargets(spec, fromPath, aliases) {
 }
 
 const IMPORT_RE = /(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*|^\s*import\s+)["']([^"'\n]+)["']/gm;
+// `import <clause> from "x"`: the clause names what the file gets (default, { named }, * as ns).
+const CLAUSE_RE = /\bimport\s+(?:type\s+)?([\w$*{},\s]+?)\s*from\s*["']([^"'\n]+)["']/g;
+// Forms that are a dependency whatever names are used: re-exports, side-effect imports, require()
+// and dynamic import().
+const ALWAYS_RE = [
+  /\bexport\s+(?:type\s+)?(?:\*|\{[^}]*\})(?:\s+as\s+[\w$]+)?\s*from\s*["']([^"'\n]+)["']/g,
+  /\b(?:import|require)\s*\(\s*["']([^"'\n]+)["']/g,
+  /^\s*import\s*["']([^"'\n]+)["']/gm,
+];
+const STATEMENT_RE = /\b(?:import|export)\s+[^;'"]*?from\s*["'][^"'\n]+["'];?|^\s*import\s*["'][^"'\n]+["'];?/gm;
 
-function jsEdges(p, text, files, aliases) {
-  const out = new Set();
-  for (const m of text.matchAll(IMPORT_RE)) {
-    const spec = m[1];
+/** Local names an import clause binds: "React, { useState as useS, type FC }" -> React, useS, FC. */
+export function clauseNames(clause) {
+  const names = [];
+  const braces = clause.match(/\{([^}]*)\}/);
+  for (const part of (braces ? braces[1] : "").split(",")) {
+    const local = part.trim().replace(/^type\s+/, "").split(/\s+as\s+/).pop().trim();
+    if (local) names.push(local);
+  }
+  const outside = clause.replace(/\{[^}]*\}/, "");
+  const ns = outside.match(/\*\s*as\s+([\w$]+)/);
+  if (ns) names.push(ns[1]);
+  const def = outside.replace(/\*\s*as\s+[\w$]+/, "").replace(/,/g, " ").trim();
+  if (def) names.push(...def.split(/\s+/).filter(Boolean));
+  return names;
+}
+
+// Comments out, so a name mentioned only in a comment does not count as used. "//" right after
+// ":" or a quote is left alone (URLs in strings).
+const stripJsComments = (text) => text.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:"'`\\])\/\/[^\n]*/g, "$1");
+
+/**
+ * Repo files a JS/TS file imports: Map target -> true when something it imports from there is
+ * used, false when it imports names from it and uses none of them (a leftover import).
+ */
+function jsEdges(p, source, files, aliases) {
+  // A commented-out import (`// import { X } from "./x"`) is no dependency at all.
+  const text = stripJsComments(source);
+  const resolve = (spec) => {
     const candidates = spec.startsWith(".") ? [joinRepo(dirOf(p), spec)] : aliasTargets(spec, p, aliases);
     for (const c of candidates) {
       const hit = resolveFile(c, files);
-      if (hit && hit !== p) {
-        out.add(hit);
-        break;
-      }
+      if (hit && hit !== p) return hit;
     }
+    return null;
+  };
+  const always = new Set();
+  for (const re of ALWAYS_RE) for (const m of text.matchAll(re)) always.add(m[1]);
+  const named = new Map(); // spec -> names it binds
+  for (const m of text.matchAll(CLAUSE_RE)) named.set(m[2], [...(named.get(m[2]) ?? []), ...clauseNames(m[1])]);
+  const body = text.replace(STATEMENT_RE, " ");
+  const isUsed = (name) => new RegExp(`(^|[^\\w$.])${name.replace(/\$/g, "\\$")}(?![\\w$])`).test(body);
+
+  const out = new Map();
+  for (const m of text.matchAll(IMPORT_RE)) {
+    const spec = m[1];
+    const hit = resolve(spec);
+    if (!hit) continue;
+    const names = named.get(spec);
+    const used = always.has(spec) || !names || names.length === 0 || names.some(isUsed);
+    out.set(hit, (out.get(hit) ?? false) || used);
   }
   return out;
 }
@@ -178,7 +231,7 @@ function csEdges(parsed) {
 
 /**
  * Wire form of buildDeps' result: { paths, edges: [from0, to0, from1, to1, ...] as indexes into
- * paths, truncated }. Repeating both full paths per edge made VS Code's 139k edges 17 MB of JSON;
+ * paths, unused: [edge numbers marked unused], truncated }. Repeating both full paths per edge made VS Code's 139k edges 17 MB of JSON;
  * this is 2.4 MB. The UI unpacks it (web/src/lib/deps.js).
  */
 export function packDeps({ edges, truncated }) {
@@ -190,11 +243,13 @@ export function packDeps({ edges, truncated }) {
     return i;
   };
   const flat = new Array(edges.length * 2);
-  edges.forEach(([from, to], k) => {
+  const unused = [];
+  edges.forEach(([from, to, flag], k) => {
     flat[2 * k] = id(from);
     flat[2 * k + 1] = id(to);
+    if (flag === "unused") unused.push(k);
   });
-  return { paths, edges: flat, truncated };
+  return { paths, edges: flat, unused, truncated };
 }
 
 /**
@@ -203,7 +258,8 @@ export function packDeps({ edges, truncated }) {
  */
 export function buildDeps(root, paths, read = diskReader(root)) {
   const files = new Set(paths);
-  const sources = paths.filter((p) => JS_EXT.test(p) || CS_EXT.test(p));  const truncated = sources.length > MAX_PARSED_FILES;
+  const sources = paths.filter((p) => JS_EXT.test(p) || CS_EXT.test(p));
+  const truncated = sources.length > MAX_PARSED_FILES;
   const aliases = loadAliases(read, paths);
   const edges = [];
   const cs = new Map();
@@ -211,7 +267,7 @@ export function buildDeps(root, paths, read = diskReader(root)) {
     const text = read(p);
     if (text == null) continue;
     if (CS_EXT.test(p)) cs.set(p, parseCs(text));
-    else for (const to of jsEdges(p, text, files, aliases)) edges.push([p, to]);
+    else for (const [to, used] of jsEdges(p, text, files, aliases)) edges.push(used ? [p, to] : [p, to, "unused"]);
   }
   for (const [from, tos] of csEdges(cs)) for (const to of tos) edges.push([from, to]);
   return { edges, truncated };

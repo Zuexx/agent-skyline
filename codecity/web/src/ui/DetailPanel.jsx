@@ -87,9 +87,9 @@ export default function DetailPanel({ building, districtPath, fileActivity, diff
 
       {deps && (deps.uses.length > 0 || deps.usedBy.length > 0 || deps.testedBy.length > 0) && (
         <div key={building.path} style={{ marginTop: 14, paddingTop: 10, borderTop: `1px solid ${theme.panelBorder}` }}>
-          <DepList label={t("detail.uses")} color={theme.depUses} paths={deps.uses} onFocusPath={onFocusPath} />
-          <DepList label={t("detail.usedBy")} color={theme.depUsedBy} paths={deps.usedBy} onFocusPath={onFocusPath} />
-          <DepList label={t("detail.testedBy")} color={theme.added} paths={deps.testedBy} onFocusPath={onFocusPath} />
+          <DepList label={t("detail.uses")} color={theme.depUses} paths={deps.uses} unused={deps.unusedUses} onFocusPath={onFocusPath} />
+          <DepList label={t("detail.usedBy")} color={theme.depUsedBy} paths={deps.usedBy} unused={deps.unusedBy} onFocusPath={onFocusPath} />
+          <DepList label={t("detail.testedBy")} color={theme.added} paths={deps.testedBy} unused={deps.unusedBy} onFocusPath={onFocusPath} />
         </div>
       )}
 
@@ -161,40 +161,58 @@ export default function DetailPanel({ building, districtPath, fileActivity, diff
 const DEP_SHOWN = 6;
 
 // One road kind: a colored key and the files at the other end, each clickable to fly there.
-function DepList({ label, color, paths, onFocusPath }) {
+// Imports whose names are never used (`unused`) come first, greyed and tagged.
+function DepList({ label, color, paths, unused = null, onFocusPath }) {
   const [all, setAll] = useState(false);
   if (!paths.length) return null;
-  const shown = all ? paths : paths.slice(0, DEP_SHOWN);
+  const isUnused = (p) => Boolean(unused?.has(p));
+  const ordered = unused?.size ? [...paths.filter(isUnused), ...paths.filter((p) => !isUnused(p))] : paths;
+  const shown = all ? ordered : ordered.slice(0, DEP_SHOWN);
   return (
     <div style={{ marginTop: 6 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, color: theme.muted }}>
         <span style={{ width: 14, height: 3, borderRadius: 2, background: color }} />
         {label} · {paths.length}
+        {unused?.size > 0 && <span style={{ textTransform: "none" }}>{t("detail.unusedCount", { n: unused.size })}</span>}
       </div>
       {shown.map((p) => (
         <button
           key={p}
           onClick={() => onFocusPath?.(p)}
-          title={p}
+          title={isUnused(p) ? `${p}\n${t("detail.unusedHint")}` : p}
           style={{
-            display: "block",
+            display: "flex",
+            alignItems: "baseline",
+            gap: 6,
             width: "100%",
-            textAlign: "left",
             font: "inherit",
             fontFamily: "ui-monospace, SFMono-Regular, monospace",
             fontSize: 12,
             padding: "1px 0",
             border: "none",
             background: "transparent",
-            color: theme.text,
+            color: isUnused(p) ? theme.muted : theme.text,
             cursor: "pointer",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            direction: "rtl", // keep the file name visible when the path is cut
           }}
         >
-          {"‎" + p}
+          {isUnused(p) && (
+            <span style={{ flexShrink: 0, fontFamily: "system-ui, sans-serif", fontSize: 10, border: `1px dashed ${theme.muted}`, borderRadius: 4, padding: "0 4px" }}>
+              {t("detail.unused")}
+            </span>
+          )}
+          <span
+            style={{
+              minWidth: 0,
+              flex: 1,
+              textAlign: "left",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              direction: "rtl", // keep the file name visible when the path is cut
+            }}
+          >
+            {"‎" + p}
+          </span>
         </button>
       ))}
       {paths.length > DEP_SHOWN && (

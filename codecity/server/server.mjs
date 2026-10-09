@@ -262,6 +262,9 @@ export function createServer({ repo, logFile, zonesFile, scopeFile = null, webRo
   async function handleEvents(req, res) {
     const history = (await readLastEvents(logFile, REPLAY_LIMIT * 2)).filter(ours).slice(-REPLAY_LIMIT);
     res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" });
+    // Send something right away: with no history the headers would otherwise wait for the first
+    // ping (15 s), and the page would show "offline" until then.
+    res.write(": connected\n\n");
     let closed = false;
     const send = (event) => {
       if (closed) return;

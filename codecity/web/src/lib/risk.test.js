@@ -38,6 +38,12 @@ describe("rankReview", () => {
     expect(r.reasons).toEqual([]);
   });
 
+  it("flags imports a changed file never uses", () => {
+    const withUnused = indexDeps([["src/a.ts", "src/old.ts", "unused"]]);
+    const [r] = rankReview([{ path: "src/a.ts", status: "M", added: 1, removed: 0 }], { deps: withUnused });
+    expect(r.reasons.map((x) => [x.key, x.n])).toContainEqual(["unusedImport", 1]);
+  });
+
   it("counts repeated writes in a live session", () => {
     const [r] = rankReview([{ path: "src/core.ts", writes: 4 }], { deps });
     expect(r.reasons.map((x) => x.key)).toContain("rewrites");
