@@ -10,7 +10,7 @@ CodeCity 把 git repo 畫成 3D 城市:資料夾是街區、檔案是大樓、�
 
 支援 **Claude Code**(hook)和 **pi**(擴充)。其他 agent 或人改的檔案,也會被檔案監看記錄,只是不知道是誰改的。
 
-延伸閱讀:`NOTES.md`(構想,以及為什麼做成這樣)、`PROGRESS.md`(開發過程、每個決定和一次事故)、`specs/`(每一步的規格)。
+延伸閱讀:`NOTES.zh-TW.md`(構想,以及為什麼做成這樣)、`PROGRESS.zh-TW.md`(開發過程、每個決定和一次事故)、`specs/`(每一步的規格)。
 
 ## 快速開始
 

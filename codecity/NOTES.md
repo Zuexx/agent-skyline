@@ -1,135 +1,167 @@
-# CodeCity:Claude Code 管制塔
+# CodeCity: a control tower for Claude Code
 
-- 起點:WareTrack 拆解(`../waretrack/NOTES.md`)的通用公式,套用到程式碼上。
-- 定位:個人專案,全部本機執行,不使用公司資源(原本考慮的 Azure AI 已放棄)。
-- 狀態:開發順序的 1 到 4 步都已實作(做法和現況見 `PROGRESS.md`)。
+[繁體中文](NOTES.zh-TW.md)
 
-## 一句話定位
+> These are the design notes written before building, kept as they were. What was actually built,
+> and where it differs, is in `PROGRESS.md`.
 
-把 repo 畫成一座城市,用來**監督和管制 Claude Code**:看它動了哪裡、劃出不准碰的禁區、用框選指派工作。它不是一般的程式碼視覺化工具。
+- Origin: the general formula from the WareTrack teardown (`../waretrack/NOTES.md`), applied to code.
+- Scope: a personal project that runs entirely on this machine and uses no company resources (the
+  earlier Azure AI idea was dropped).
+- Status: steps 1 to 4 of the build order, session replay and git diff comparison are built.
+  Box-select task assignment, jumping to VS Code and LLM queries are not (see `PROGRESS.md`).
 
-## 為什麼不做一般的 CodeCity
+## In one sentence
 
-程式碼視覺化研究做了二十幾年,業界日常在用的幾乎沒有。
+Draw the repo as a city in order to **supervise and control Claude Code**: see where it went, mark
+zones it must not touch, and assign work by selecting buildings. It is not a general code
+visualization tool.
 
-- **有證據的部分**:CodeCity 的對照實驗(Wettel 等人,ICSE 2011)顯示,城市對**概觀型**問題(最大的類別、最複雜的模組)能提高正確率、縮短時間。
-- **失敗的原因**:日常工作要精確的細節,城市給的是模糊的全貌。第一週覺得酷,第三週就不再打開。
+## Why not a general CodeCity
 
-把功能拆成「背後的分析」和「3D 呈現」來看:
+Code visualization has been researched for over twenty years, and almost none of it is used in
+daily work.
 
-| 功能 | 分析有用嗎 | 3D 有加分嗎 |
+- **What the evidence supports**: the CodeCity controlled experiment (Wettel et al., ICSE 2011)
+  showed that cities improve correctness and speed on **overview** questions (the largest classes,
+  the most complex modules).
+- **Why it fails**: daily work needs precise detail, and a city gives a blurry overview. It feels
+  cool in week one and nobody opens it by week three.
+
+Splitting each feature into "the analysis behind it" and "the 3D presentation":
+
+| Feature | Is the analysis useful | Does 3D add anything |
 |---|---|---|
-| PR 影響範圍 | ✅ | ⚪ 受影響檔案清單就有 80% 的價值 |
-| Hotspot(高變動、低涵蓋) | ✅ | ❌ 排序表格更好讀 |
-| 建議 reviewer、bus factor | ✅ | ❌ 表格就夠 |
-| 看 Claude Code 工作 | ✅ | ⚪ 單一 session 用 `git diff --stat` 就夠;多個 agent 平行時才有優勢 |
-| 第一次看陌生的 repo | ✅ | ✅ 研究證實有效的場景 |
-| 對非工程師說明系統 | ✅ | ✅ |
-| 飛行鏡頭、語音、旁白導覽 | ❌ | ❌ 純炫技 |
+| PR impact | ✅ | ⚪ a list of affected files gives 80% of the value |
+| Hotspots (high churn, low coverage) | ✅ | ❌ a sorted table reads better |
+| Suggested reviewers, bus factor | ✅ | ❌ a table is enough |
+| Watching Claude Code work | ✅ | ⚪ `git diff --stat` is enough for one session; the city wins with several agents in parallel |
+| First look at an unfamiliar repo | ✅ | ✅ the case the research supports |
+| Explaining a system to non-engineers | ✅ | ✅ |
+| Fly-through camera, voice, narrated tours | ❌ | ❌ pure show-off |
 
-結論:實質價值在分析,3D 只在少數情況加分。要變成生產力工具,必須換定位。
+Conclusion: the real value is in the analysis, and 3D helps only in a few cases. To become a
+productivity tool, it needs a different purpose.
 
-## 視覺化變成生產力工具的條件
+## What makes a visualization a productivity tool
 
-參考 flame graph、Google Maps、Git graph、Grafana 這些真的每天有人用的視覺化工具,它們都做到:
+Flame graphs, Google Maps, Git graphs and Grafana are visualizations people really use every day.
+They all:
 
-1. **回答一個特定的問題**,不是什麼都能看。
-2. **需要時就在眼前**,不用特地打開。
-3. **看到就能採取行動**。
-4. **比替代方法快很多**。
+1. **Answer one specific question**, rather than showing everything.
+2. **Are already in front of you when needed**, with nothing to open.
+3. **Lead directly to an action**.
+4. **Are much faster than the alternative**.
 
-本專案要回答的問題:**「Claude Code 動了什麼?有沒有超出範圍?」** 每次讓 agent 自己跑都會遇到,而且終端機輸出和 `git diff --stat` 都看不出「範圍」和「越界」。AI 寫的程式碼越來越多,人的角色從寫程式轉成監督,這個需求只會增加。
+The question this project answers: **"What did Claude Code touch? Did it go out of scope?"** It
+comes up every time an agent runs on its own, and neither terminal output nor `git diff --stat`
+shows "scope" or "out of bounds". As AI writes more of the code and people shift from writing to
+supervising, this need only grows.
 
-## 城市的基本對照
+## The city mapping
 
-| 程式碼 | 城市 |
+| Code | City |
 |---|---|
-| 資料夾、模組 | 街區 |
-| 檔案 | 建築 |
-| 行數 | 建築高度 |
-| 依賴、呼叫關係 | 道路 |
-| Claude Code session、subagent | 角色(不同顏色) |
-| 被讀的檔案 | 建築亮起 |
-| 被改的檔案 | 建築架鷹架 |
-| 鎖定的範圍 | 禁區 |
+| Folder, module | Block |
+| File | Building |
+| Line count | Building height |
+| Dependencies, calls | Roads |
+| Claude Code session, subagent | Characters (one color each) |
+| File being read | Building lights up |
+| File being changed | Building gets scaffolding |
+| Locked area | No-go zone |
 
-## 核心功能
+## Core features
 
-### 1. 瞄一眼就知道
-- Claude Code 在跑時,城市開在第二個螢幕上,不用操作。
-- 角色走出預期範圍(例如要它改前端,它跑去動資料庫),一眼看得到。
-- 多個 agent 走進同一棟建築,提醒可能衝突。
+### 1. Know at a glance
+- While Claude Code runs, the city sits on a second screen and needs no interaction.
+- When a character leaves the expected area (asked to change the frontend, it goes into the
+  database), it is visible at a glance.
+- Several agents entering the same building signals a possible conflict.
 
-### 2. 禁區 ⭐ 表格做不到的功能
-- 在城市上框選街區,標成「鎖定」。
-- Claude Code 的 `PreToolUse` hook 收到改檔請求時,檢查目標是否在鎖定區,是就擋下。
-- 被擋下的建築閃紅燈。
-- 把「AI 不要碰這裡」從提示詞裡的口頭約定,變成看得到、真的有效的護欄。
+### 2. No-go zones ⭐ something a table cannot do
+- Select blocks in the city and mark them "locked".
+- When Claude Code's `PreToolUse` hook receives a write, it checks whether the target is in a
+  locked zone and blocks it if so.
+- The blocked building flashes red.
+- This turns "AI, don't touch this" from a verbal agreement in the prompt into a guardrail that is
+  visible and actually enforced.
 
-### 3. 框選指派工作
-- 框選幾棟建築,輸入「幫這幾個檔案補測試」,選取的檔案清單自動送進 Claude Code 當任務範圍。
-- 城市不只是輸出畫面,也是輸入介面。這是跟現有 CodeCity 類工具最大的差別。
+### 3. Assign work by selection
+- Select a few buildings, type "add tests for these files", and the selected file list goes to
+  Claude Code as the task scope.
+- The city is an input surface, not only an output. This is the biggest difference from existing
+  CodeCity-like tools.
 
-### 4. 跳到程式碼
-- 點建築用 VS Code 開啟(`vscode://file/...`),或顯示這個 session 對它做的 diff。
-- 城市負責「找到」,細節回到熟悉的工具處理。
+### 4. Jump to code
+- Clicking a building opens it in VS Code (`vscode://file/...`) or shows this session's diff for it.
+- The city is for finding; details go back to familiar tools.
 
-### 5. Session 重播和 review
-- 重播 agent 的路徑:先讀了什麼、改了什麼、有沒有繞路。
-- 改動的建築依風險排序(高變動、低涵蓋的排前面),依序點過去看 diff。
+### 5. Session replay and review
+- Replay the agent's path: what it read first, what it changed, whether it took detours.
+- Changed buildings are ordered by risk (high churn, low coverage first), to click through and
+  read the diffs in order.
 
-## 之後可能加的功能(優先度低)
+## Possible later features (low priority)
 
-- **PR 疊加**:改到的建築架鷹架、新檔案是新建築、刪掉的變廢墟,依賴它們的建築一起亮起。
-- **架構邊界檢查**:跨越不該跨的分層的道路標紅。
-- **本機 LLM 查詢**:讓 LLM 回傳場景指令 JSON(要亮哪些建築、走哪條路徑、鏡頭怎麼動),而不只回文字。例如:
+- **PR overlay**: changed buildings get scaffolding, new files are new buildings, deleted files
+  become ruins, and buildings that depend on them light up too.
+- **Architecture boundary checks**: roads that cross layers they should not are shown in red.
+- **Local LLM queries**: the LLM returns a scene-command JSON (which buildings to light, which path
+  to walk, how to move the camera), not just text. For example:
 
   ```json
   {
     "highlight": ["src/payment/charge.ts"],
     "path": ["api/checkout.ts", "payment/charge.ts", "infra/stripe.ts"],
     "camera": "fly_along_path",
-    "answer": "付款流程從 checkout 進入,經過 charge,最後呼叫 Stripe。"
+    "answer": "Checkout enters the payment flow, goes through charge, and finally calls Stripe."
   }
   ```
 
-## 技術選擇
+## Technology
 
-| 用途 | 選擇 |
+| Purpose | Choice |
 |---|---|
-| Agent 事件和禁區 | Claude Code hooks(`PreToolUse`、`PostToolUse`) |
-| 事件傳遞 | 本機小伺服器,用 WebSocket 推給前端 |
-| 渲染 | React Three Fiber;大 repo 用 instancing |
-| 程式碼結構和依賴 | CodeGraph(已有),備案是 tree-sitter |
-| 歷史和屋主 | `git log`、`git blame` |
-| LLM(選配) | LM Studio,目前跑 Qwen3.8-27B,支援 JSON schema 結構化輸出 |
+| Agent events and no-go zones | Claude Code hooks (`PreToolUse`, `PostToolUse`) |
+| Event delivery | A small local server pushing to the front end over WebSocket |
+| Rendering | React Three Fiber; instancing for large repos |
+| Code structure and dependencies | CodeGraph (already available), tree-sitter as a fallback |
+| History and owners | `git log`, `git blame` |
+| LLM (optional) | LM Studio, currently Qwen3.8-27B, with JSON-schema structured output |
 
-**顯存限制**:LM Studio 要留 4 到 6GB 顯存,不能 offload。
+**VRAM limit**: LM Studio must leave 4 to 6 GB of VRAM free and must not offload.
 
-## 設計注意事項
+## Design notes
 
-- **版面要穩定**:建築位置依路徑固定,commit 後不能換位置,否則記不住哪個模組在哪。
-- **城市負責導覽,不負責細節**:要讀的還是 diff,城市和 diff 面板連動。
-- **大 repo 效能**:上萬個檔案用 instancing,依縮放程度決定顯示到哪一層。
-- **禁區要可靠**:hook 擋不擋得下,不能依賴前端有沒有開著。禁區設定要存成檔案,hook 直接讀檔判斷。
+- **Stable layout**: building positions are fixed by path and must not move after a commit,
+  otherwise nobody can remember which module is where.
+- **The city navigates, it does not hold detail**: the diff is still what you read; the city and
+  the diff panel are linked.
+- **Large repos**: tens of thousands of files use instancing, and zoom level decides how deep the
+  display goes.
+- **Zones must be reliable**: whether the hook blocks a write cannot depend on the front end being
+  open. Zone settings are stored in a file that the hook reads directly.
 
-## 開發順序
+## Build order
 
-前兩步不需要 3D,做完就能用:
+The first two steps need no 3D and are useful on their own:
 
-1. **事件紀錄**:hook 把 Claude Code 的讀寫事件記成 log(文字版)。
-2. **禁區**:設定檔指定鎖定路徑,`PreToolUse` 擋下改檔(文字版)。
-3. **城市本體**:即時顯示事件,在城市上框選禁區(寫回同一份設定檔)。
-4. **框選指派工作、跳到 VS Code、session 重播**。
-5. PR 疊加和 LLM 查詢放到最後,或不做。
+1. **Event log**: a hook records Claude Code's reads and writes (text only).
+2. **No-go zones**: a settings file lists locked paths and `PreToolUse` blocks writes (text only).
+3. **The city**: live events, and selecting zones in the city (written back to the same file).
+4. **Assign work by selection, jump to VS Code, session replay**.
+5. PR overlay and LLM queries last, or never.
 
-## 成功標準
+## Success criterion
 
-連續兩週,每次開 Claude Code 時都會順手打開城市。做得到就是生產力工具;做不到就承認它是學習專案(學到 React Three Fiber、Claude Code hooks、本機 LLM 結構化輸出,也有價值)。
+For two weeks in a row, the city gets opened every time Claude Code is started. If that happens,
+it is a productivity tool; if not, admit it is a learning project (React Three Fiber, Claude Code
+hooks and local LLM structured output are still worth learning).
 
-## 待決定
+## Open questions
 
-- 先拿哪個 repo 試?要選自己熟悉、而且常讓 Claude Code 自己跑的。
-- 前端要不要包成桌面 app(Tauri、Electron),還是本機網頁就好?
-- CodeGraph 的輸出能直接用,還是要另外轉成 `city.json`?
-- 禁區的單位:路徑 glob 就好,還是要支援到函式層級?
+- Which repo to try first? One that is familiar and where Claude Code often runs on its own.
+- Package the front end as a desktop app (Tauri, Electron), or keep it a local web page?
+- Can CodeGraph's output be used directly, or does it need converting to a `city.json`?
+- Zone granularity: path globs only, or down to functions?

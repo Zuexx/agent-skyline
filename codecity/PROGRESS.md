@@ -1,121 +1,257 @@
-# CodeCity 進度紀錄
+# CodeCity progress log
 
-分工:Claude(Opus)寫規格、審查、驗收;pi + Qwen3.8-27B(本機 LM Studio)實作。
-監督對象:`D:\Labs\forgekit`(只讀,不修改它的程式碼;每一步都確認過 `git status` 乾淨)。
+[繁體中文](PROGRESS.zh-TW.md)
 
-## 目前狀態:五個步驟全部完成
+Division of work: Claude (Opus) writes specs, reviews and verifies; pi with Qwen3.8-27B (local LM
+Studio) implements.
+Supervised repo: `D:\Labs\forgekit` (read only; its code is never modified, and `git status` was
+checked clean after every step).
 
-- 測試:根目錄 64 個(`npm test`)+ 前端 27 個(`cd web && npm test`),全部通過。
-- 已在瀏覽器實測:城市渲染、滑鼠移過的標籤、點擊選取、即時事件上色、agent 標記、事件列表、在畫面上鎖定街區。
-- 端對端驗證:在畫面上點一個街區鎖定 → `zones.json` 寫入 `docs/adr/**` → 真正的 guard hook 擋下對 `docs/adr/` 的寫入,同時放行其他檔案。
+## Current state
 
-## 回來後要你做的事
+- The original five steps are done, and so are everything added after them: grouping switch, git
+  diff, themes, i18n, multiple agents (pi adapter, file watcher), notifications, scope check,
+  timeline replay, large-repo performance, and the demo video.
+- Tests: 89 at the root (`npm test`) and 71 in the front end (`cd web && npm test`), all passing.
+- Every feature was checked in the browser. Zone blocking, including shell writes, was verified
+  with the real Claude hook and a real pi session.
+- Demo video: `demo/codecity-demo.mp4` (3:10, git-ignored; to re-record, see `demo/README.md`).
 
-1. ~~安裝 hook~~ ✅ 已完成(你明確授權後由我寫入 `D:\Labs\forgekit\.claude\settings.local.json`,已確認被 forgekit 的 .gitignore 排除、hook 實測可用)。
-   要移除監看,刪掉這個檔案即可。
-2. **啟動伺服器**(我這個工作階段結束後,背景的伺服器也會停):
+| Commit | Contents |
+|---|---|
+| `53c101b` | CodeCity itself: hooks, zones, server, 3D city, grouping, git diff, themes, i18n, file watcher |
+| `b1e5c46` | pi adapter; shell writes into locked zones are blocked |
+| `0f9835c` | Alerts, desktop notifications, scope check |
+| `401ea59` | Timeline replay |
+| `4f4d5b3` | Performance at 20,000 files |
+| `f0ff9da` | Demo video; brighter night city |
+
+## How to use it
+
+1. The hooks are installed in `D:\Labs\forgekit\.claude\settings.local.json` (excluded by
+   forgekit's .gitignore). Delete that file to stop watching. For other repos, run
+   `node cli/install-hooks.mjs`.
+2. Start the server and open http://127.0.0.1:4477:
    ```
    node D:\Labs\game-view-ideas\codecity\server\server.mjs --repo D:\Labs\forgekit
    ```
-   然後打開 http://127.0.0.1:4477
-3. 在 forgekit 開 Claude Code 工作,城市會即時顯示它讀寫的檔案。也可以用 `node cli/report.mjs` 看文字摘要。
-4. **LM Studio**:qwen3.8-27b 在步驟 5 進行中被卸載(狀態 `not-loaded`),pi 因此中斷。我沒有自己重新載入,因為不確定是不是你刻意卸載,而且自行載入可能不符合你的顯存規則。
+3. Work in forgekit with Claude Code or pi (with `adapters/pi/codecity.js` loaded); the city shows
+   reads and writes live. Text summary: `node cli/report.mjs`.
 
-## 使用方式
-
-| 操作 | 方法 |
+| Action | How |
 |---|---|
-| 平移 / 縮放 / 旋轉 | 左鍵拖曳 / 滾輪 / 右鍵拖曳 |
-| 看檔案資訊 | 點建築;右側面板顯示行數、讀寫次數、最後讀寫時間。Esc 或點空白處取消 |
-| 鎖定區域 | 按 TopBar 的「Lock zones」,點街區(或點建築代表它所在的街區)切換鎖定,按「Done locking」結束 |
-| 從事件跳到建築 | 點左下角事件列表的任一筆 |
-| 不裝 hook 先看效果 | `node cli/simulate.mjs --repo D:\Labs\forgekit --file <暫存路徑>\events.jsonl`,伺服器啟動時設 `CODECITY_EVENTS` 指到同一個檔案 |
+| Pan / zoom / rotate | Left drag / wheel / right drag; double-click a building to fly to it |
+| File details | Click a building; the side panel shows lines, read/write counts, and the diff when comparing |
+| Locked zones / allowed scope | The lock / flag in the toolbar, then click blocks to toggle |
+| Grouping, branch comparison | The drop-downs in the middle and right of the toolbar |
+| Replay | The timeline at the bottom |
+| Try it without hooks | `node cli/simulate.mjs --repo D:\Labs\forgekit --file <temp>\events.jsonl`, and start the server with `CODECITY_EVENTS` pointing at the same file |
 
-顏色:藍 = 4 秒內被讀、琥珀 = 這段期間寫過、紅 = 3 秒內被擋下、紅色屋頂 = 在禁區內、浮動的倒錐 = agent 目前的位置(每個 agent 一種顏色)。
+Colors are explained in the legend at the bottom right.
 
-## 進度
+## Steps
 
-| 步驟 | 狀態 | 規格 | 備註 |
+| Step | Status | Spec | Notes |
 |---|---|---|---|
-| 1 事件紀錄 | ✅ | `specs/01-event-log.md` | pi 一次做完;我補了 `CLAUDE_PROJECT_DIR` 基準(決定 3) |
-| 2 禁區 | ✅ | `specs/02-zones.md` | 拆成三批;我補了 `..` 路徑繞過禁區的漏洞(決定 8) |
-| 3 伺服器 | ✅ | `specs/03-server.md` | 拆成三批;我修了 tail 的 2 個 bug 和 1 個錯誤的測試假設(決定 10、11);**發生事故,見下方** |
-| 4 3D 城市畫面 | ✅ | `specs/04-web-city.md` | 三批;配色、高度、地面我自己調(決定 12) |
-| 5 即時事件、agent 標記、禁區畫面 | ✅ | `specs/05-live.md` | Part A 主體由 pi 完成,模型被卸載後 App 接線由我收尾;Part B、C 由我寫(決定 14–16) |
+| 1 Event log | ✅ | `specs/01-event-log.md` | pi did it in one pass; I added the `CLAUDE_PROJECT_DIR` base (decision 3) |
+| 2 Zones | ✅ | `specs/02-zones.md` | Split into three batches; I closed a `..` path bypass (decision 8) |
+| 3 Server | ✅ | `specs/03-server.md` | Three batches; I fixed 2 tail bugs and 1 wrong test assumption (decisions 10, 11); **incident, see below** |
+| 4 3D city | ✅ | `specs/04-web-city.md` | Three batches; I tuned colors, heights and ground (decision 12) |
+| 5 Live events, agent markers, zone UI | ✅ | `specs/05-live.md` | pi did most of Part A; the model was unloaded, so I finished the App wiring; I wrote Parts B and C (decisions 14–16) |
 
-## 決定紀錄
+## Decisions
 
-1. **不重開 pi**:想讓 pi 在 `codecity/` 目錄重開,但用 `--approve` 自動信任資料夾被安全規則擋下。改成沿用在 forgekit 啟動的 pi,用絕對路徑限定工作範圍。
-2. **零 npm 依賴(hook 和伺服器)**:hook 每次工具呼叫都會執行,越輕越好;也避免在被監督的 repo 裡引入任何東西。只有前端畫面才用 npm 套件。
-3. **路徑基準用 `CLAUDE_PROJECT_DIR`**:payload 的 `cwd` 會隨 `cd` 改變,同一檔案的相對路徑會不一致。
-4. **禁區設定壞掉時一律擋寫入(fail closed)**:zones.json 存在但格式錯誤,代表使用者想鎖東西。檔案不存在則視為沒有禁區。
-5. **已知限制**:禁區只攔得到 Edit/Write/MultiEdit/NotebookEdit。透過 Bash 寫檔(例如 `echo > file`)攔不到。
-6. **版面穩定性**:建築位置只由路徑和同資料夾的檔案清單決定,不受行數影響。
-7. **伺服器只綁 127.0.0.1**:它能寫禁區設定,不能讓區網其他機器存取。
-8. **路徑先正規化再比對禁區**:`api\..\api\Anvil\x.cs` 原本比對不到 `api/Anvil/**`,可以繞過禁區。
-9. **派工方式**:每批最多 2 到 3 個檔案,每批開新 session,規定只用工具寫檔、回報最多 10 行,並明列禁止事項(見事故)。
-10. **tail 的兩個 bug(我修)**:伺服器先啟動、事件檔後建立時,第一批事件會被跳過;讀到一半的 UTF-8 多位元組字元會被切斷(中文路徑會亂碼)。
-11. **路徑穿越測試改寫**:`fetch` 會先把 `%2e%2e` 正規化,請求到不了伺服器的檢查。改用 `..%2f`,確實驗證回 403。
-12. **視覺調整(我做)**:第一版整片灰、建築幾乎是平的。改成白色建築放在藍色階梯地塊上、高度乘 2.5、地面縮小、半球光加左側主光。
-13. **事件模擬器 `cli/simulate.mjs`(我寫)**:強制要求 `--file`,不會寫到真正的事件檔。
-14. **重連不重複計算(我修)**:EventSource 斷線重連時伺服器會重送最近 200 筆,原本會讓讀寫次數加倍。改成每次連上都從空狀態開始。
-15. **agent 標記放大**:規格寫半徑 0.35,在 150 寬的城市、預設縮放下看不見,改成 1.2。
-16. **禁區比對共用同一份程式**:前端直接 import hook 用的 `lib/glob.mjs`,不複製,所以畫面上顯示的鎖定範圍和 hook 實際擋的範圍不可能不一致。
-18. **改版:夜間城市(你回饋「沒有衝擊性、按鈕不知道要幹嘛」之後)**:
-    - 整座城市平常是暗的,被讀寫的建築用超過 1.0 的亮度上色,配合 bloom 後製特效發光(新增 `@react-three/postprocessing`)。
-    - 每次讀寫,建築底部擴散光環;被擋下時是更大的紅色衝擊波(`city/Pulses.jsx`,只對 5 秒內的新事件觸發,重連時不會一次炸出 200 圈)。
-    - agent 標記改成發光倒錐,加一道光柱打到它正在處理的建築。
-    - 鏡頭跟隨(預設開):自動飛到最新事件的位置並拉近;手動拖曳畫面會自動關閉。
-    - 介面全部改成繁體中文,按鈕加上滑鼠提示;禁區模式有說明橫幅(要點哪裡、鎖了會怎樣、目前鎖了什麼、一鍵解除);右下角加顏色圖例。
-19. **分組切換與區塊名稱**:區塊加上名稱和檔案數(拉近時逐層顯示子資料夾);可以切換「資料夾 / 角色 / 本次動過 / 差異」,切換時大樓會飛到新位置重新集結。分組用內部代號(`code`、`test`…),名稱由多語系翻譯,換語言不會重排。
-20. **Bash 讀檔也算讀取**:從指令裡辨識出存在的檔案路徑(`commandPaths.js`),只比對真的存在的建築,不會憑空變出檔案。hook 記錄指令的長度從 200 字元提高到 2000。
-21. **git diff 結合**:伺服器新增 `/api/branches`、`/api/diff`、`/api/diff/file`、`/api/city?ref=`。全部只讀 git 物件,不切換工作目錄;分支名稱先檢查格式,避免被當成 git 參數。比較時城市照該分支的檔案來建,被刪除的檔案也保留成建築;依 diff 上色;摘要卡依角色統計;點大樓可以看 diff。
-22. **主題切換**:夜間(發光)/日間(飽和色,無 bloom)/跟隨系統。換主題時 3D 場景重建材質;捲軸和下拉選單用 `color-scheme` 跟著主題。
-23. **多語系**:繁中 / 英文,依瀏覽器語言預設,選擇存在 localStorage。測試確保兩種語言的字串鍵完全一致。
-24. **事件依 repo 過濾**:所有 repo 共用同一個事件檔,事件現在會記錄所屬 repo 的根目錄,伺服器只推送自己 repo 的事件,避免另一個專案的 `README.md` 讓這裡的 `README.md` 亮起來。
-25. **動態列表保留整段歷史**(上限 1000 筆)、可以捲動和篩選;往回捲時不會被新事件推走;點檔案會讓鏡頭飛過去並閃一圈;點指令會展開完整指令和它讀過的檔案。雙擊建築也會飛過去。
-26. **取景修正**:原本重新取景的公式多除了一次目前的縮放倍率,切換分組後城市會縮成一個點。另加「全景」按鈕;鏡頭跟隨改成預設關閉。
-27. **多 agent 第一步:來源欄位 + 檔案監看**:
-    - 事件多一個 `source`(claude-code、pi、watcher…),舊事件沒有這個欄位時視為 claude-code。動態列表顯示「Claude 1」「pi 1」「檔案監看」,依來源分別編號;Claude 是倒錐標記,其他 agent 是菱形,檔案監看沒有標記。
-    - 伺服器內建檔案監看(`server/watch.mjs`,預設開啟,`--no-watch` 關閉):任何寫入都會記成 `source: "watcher"` 的事件,所以沒有 hook 的 agent 或人改的檔案也看得到,但**不知道是誰改的,也擋不了**。
-    - 降噪:git 忽略的檔案(bin/、obj/、node_modules/)不記;資料夾本身的變動不記;agent 的 hook 已經回報的同一筆寫入,不重複記。實測在 forgekit 閒置時沒有誤報。
-    - 第二步(pi 轉接器)還沒做。
-28. **工具列改版**:只把直觀的輔助功能改成 icon(全景、鏡頭跟隨、禁區附數字徽章、主題點擊輪換、語言用短字);「分組方式」和「比較分支」保留文字,因為沒有好懂的 icon,而且是主要操作。emoji 換成統一的線條 SVG(`ui/Icon.jsx`),隨主題變色。每個 icon 都有中英文滑鼠提示。工具列分左(狀態)、中(分組)、右(比較 + 工具)三區,一般寬度一行放得下。
-29. **pi 轉接器(`adapters/pi/codecity.js`)**:用 pi 的擴充 API 做出和 Claude hook 一樣的兩件事:`tool_call` 執行前檢查禁區(可以回傳 `{ block: true }` 擋下),`tool_execution_end` 執行後記錄事件。pi 的事件先轉成 Claude hook 的格式,再交給同一套 `normalize` 和禁區判斷,兩種 agent 用同一套規則。
-    - **實測發現的 bug**:pi 的 `tool_execution_end` 不帶參數,只有結果;參數要從 `tool_execution_start` 依 call id 記下來。被擋下的呼叫結束時是錯誤結果,不能記成寫入。
-    - **實測發現的安全缺口**:真正的 pi(qwen3.5-9b)被擋下 edit 之後,**改用 `echo … > locked/secret.ts` 寫進禁區,而且成功了**。Claude 也有一樣的缺口。補上 `lib/bashTargets.mjs`:辨識重新導向、`tee`、`sed -i`、`cp`、`mv`、`rm`、`touch`、`git checkout --` 和 PowerShell 的寫檔指令,目標在禁區就擋下。Claude 的 guard matcher 加上 `Bash|PowerShell`(已更新 forgekit 的設定和安裝範本)。直譯器內寫檔(`python -c`)仍然擋不到,由檔案監看事後記錄。
-    - **再次實測**:同一個 pi 改用 bash 寫禁區被擋下,檔案未被修改,事件正確記錄被擋的路徑。
-    - 實測用的是 9B 小模型(約 10GB,顯存剩 9GB,符合保留 4 到 6GB 的規則),在暫存目錄的拋棄式 repo 裡進行,不碰 forgekit;測完已卸載模型。
-30. **文件英文為主**:README 改成英文,另附 `README.zh-TW.md`。
-31. **通知(被擋下或超出範圍時)**:`lib/alerts.js` 把「被擋下」和「範圍警示」整理成同一份警示清單。畫面上方一定會跳出提示卡(7 秒後消失,點一下飛過去);工具列的鈴鐺開啟後也會發桌面通知(第一次開啟時才向瀏覽器要權限)。只通知 15 秒內的新警示,重新連線時重送的歷史事件不會一次全部跳出來。
-32. **範圍檢查(`lib/scope.js`)**:
-    - **有宣告**:工具列的旗子 → 點街區加入或移出允許範圍(存在 `data/scope.json`,`/api/scope`),範圍內的街區顯示淡綠色;範圍外的寫入發出警示,但**不擋**(擋是禁區的工作)。
-    - **沒宣告時自動推論**,兩條規則都講得出理由:「沒讀先寫」(改了這次沒讀過的既有檔案)、「跑到新區域」(工作 5 步以上之後,改了這次完全沒碰過的區域,區域 = 前兩層資料夾)。誠實說明:Claude 的 Edit 本來就要求先讀,所以第一條對 Claude 較少觸發。
-    - **檔案監看的事件不參與推論**:它沒有讀取紀錄,每一筆都會被誤判成「沒讀先寫」。實測時發現這個雜訊後修正。
-    - 呈現:觸發警示的大樓頂上有黃色屋頂;事件列表加 ⚠ 和「警示」篩選。
-33. **時間軸重播**:畫面下方的「重播這次工作」從頭重演整段工作;可以播放、暫停、拖曳、調速度(1×、8×、32×、120×),時間軸上標出每次寫入(琥珀)和被擋下(紅)。做法是取時間點 T 之前的事件,把時間戳整體平移到「現在」,所以上色、光環、agent 標記、鏡頭跟隨都不用改就能重演。重播時工具列顯示「重播中」;提示卡和通知只看即時事件,不會因為重播又響一次。
-34. **大型 repo 效能(結果見 `docs/performance.md`)**:合成 20,000 個檔案的 repo,在 Orca 內建瀏覽器裡只剩每秒約 2 格,分頁卡死,還兩度讓 Orca 的瀏覽器連線斷掉。之後改用獨立的 Chrome(`bench/perf.mjs`,Playwright 驅動已安裝的 Chrome,錄 CPU profile)量測,避免再影響 Orca。找到三個隨規模放大的瓶頸並修正:動態列表改成只畫 120 列並 memo、1,841 個街區合成一個 InstancedMesh、大樓上色只檢查候選。同一個 Chrome 對照:主執行緒忙碌 44% → 9%、首次載入 2,054 → 133 ms、記憶體 79 → 36 MB;8 倍速重播仍有 61 fps。
-35. **演示影片(`demo/`)**:評估過 Remotion(用 React 逐格渲染,適合做動畫合成,但拍不了即時串流、WebGL 動畫的真實 App)之後,改成**錄真正在運作的 App**:Playwright 驅動 Chrome,用 CDP screencast 取得畫面(1080p 約 60 fps),以固定 30 fps 寫給 ffmpeg;標題卡和雙語字幕用 HTML/CSS 疊在頁面上;劇本事件像 hook 一樣寫進獨立的事件檔。App 加上只在 `?demo` 時才出現的橋接,讓腳本找得到大樓在螢幕上的位置。第一版發現城市太暗、事件發生的區域太小、2 萬檔案那段警示太多、標題卡上有游標,修正後錄第二版(3:10)。過程中順便改善了 App 本身:夜間主題調亮、太小的街區不顯示名稱。
-17. **測試範圍分開**:根目錄 `npm test` 只跑 `test/*.test.mjs`,不會誤抓 `web/` 的 vitest 檔;伺服器的靜態檔目錄改成可注入,測試不再依賴 `web/dist` 有沒有 build 過。
+1. **pi was not restarted**: restarting pi in `codecity/` needed `--approve` to trust the folder
+   automatically, which the safety rules block. Instead, the pi started in forgekit was reused,
+   with the work area fixed by absolute paths.
+2. **Zero npm dependencies for hooks and server**: the hook runs on every tool call, so lighter is
+   better, and nothing gets introduced into the supervised repo. Only the front end uses npm
+   packages.
+3. **Paths are relative to `CLAUDE_PROJECT_DIR`**: the payload's `cwd` changes with `cd`, so the
+   same file would otherwise get different relative paths.
+4. **A broken zones file blocks all writes (fail closed)**: if zones.json exists but is malformed,
+   the user meant to lock something. A missing file means no zones.
+5. **Known limit (later closed, see decision 29)**: zones only caught Edit/Write/MultiEdit/
+   NotebookEdit. Writes through Bash (such as `echo > file`) got through.
+6. **Stable layout**: a building's position depends only on its path and the file list of its
+   folder, not on line counts.
+7. **The server binds to 127.0.0.1 only**: it can write zone settings, so other machines on the
+   LAN must not reach it.
+8. **Paths are normalized before matching zones**: `api\..\api\Anvil\x.cs` did not match
+   `api/Anvil/**`, which bypassed the zone.
+9. **How work is handed out**: at most 2 to 3 files per batch, a new session per batch, files
+   written only through tools, reports of at most 10 lines, and an explicit list of what is
+   forbidden (see the incident).
+10. **Two tail bugs (fixed by me)**: if the server started before the event file existed, the
+    first batch of events was skipped; a UTF-8 multi-byte character split across reads was cut
+    (Chinese paths came out garbled).
+11. **Path traversal test rewritten**: `fetch` normalizes `%2e%2e` before sending, so the request
+    never reached the server's check. It now uses `..%2f` and really verifies the 403.
+12. **Visual tuning (by me)**: the first version was flat gray with nearly flat buildings. It
+    became white buildings on stepped blue blocks, heights ×2.5, a smaller ground, and a hemisphere
+    light plus a key light from the left.
+13. **Event simulator `cli/simulate.mjs` (by me)**: `--file` is required, so it can never write to
+    the real event log.
+14. **No double counting on reconnect (fixed by me)**: when EventSource reconnects, the server
+    resends the latest 200 events, which doubled read/write counts. Each connection now starts
+    from an empty state.
+15. **Bigger agent markers**: the spec said radius 0.35, invisible in a 150-wide city at default
+    zoom. Now 1.2.
+16. **Zone matching shares one implementation**: the front end imports the hook's `lib/glob.mjs`
+    rather than copying it, so the locked area shown on screen cannot differ from what the hook
+    blocks.
+17. **Test scopes are separate**: root `npm test` runs only `test/*.test.mjs` and no longer picks
+    up the vitest files in `web/`; the server's static directory is injectable, so tests no longer
+    depend on whether `web/dist` was built.
+18. **Redesign: a night city (after your feedback "it has no impact, and I can't tell what the
+    buttons do")**:
+    - The city is dark by default. Buildings being read or written are colored above 1.0 and glow
+      through a bloom post-process (added `@react-three/postprocessing`).
+    - Each read or write sends a ring out from the building's base; a blocked write sends a larger
+      red shockwave (`city/Pulses.jsx`, only for events under 5 seconds old, so a reconnect does
+      not fire 200 rings at once).
+    - Agent markers became glowing inverted cones, with a beam down to the building being worked on.
+    - Camera follow (on by default at the time): flies to and zooms in on the latest event; manual
+      dragging turns it off.
+    - The whole UI went to Traditional Chinese with tooltips on buttons; zone mode got an
+      explanation banner (where to click, what locking does, what is locked, one-click unlock); a
+      color legend went to the bottom right.
+19. **Grouping switch and block names**: blocks show a name and file count (subfolders appear as
+    you zoom in). Grouping switches between folder / role / touched this session / diff, and
+    buildings fly to their new places when it changes. Groups use internal ids (`code`, `test`…)
+    with translated names, so switching language does not rearrange anything.
+20. **Bash reads count as reads**: file paths that exist are recognized in commands
+    (`commandPaths.js`) and only matched against real buildings, so no files are invented. The
+    hook's recorded command length went from 200 to 2000 characters.
+21. **git diff**: the server gained `/api/branches`, `/api/diff`, `/api/diff/file` and
+    `/api/city?ref=`. All of them read git objects only and never switch the working tree; branch
+    names are validated so they cannot be taken as git options. When comparing, the city is built
+    from that branch's files, deleted files stay as buildings, buildings are colored by the diff,
+    a summary card counts by role, and clicking a building shows its diff.
+22. **Theme switch**: night (glowing) / day (saturated, no bloom) / follow the system. Changing
+    theme rebuilds the 3D materials; scrollbars and drop-downs follow it through `color-scheme`.
+23. **i18n**: Traditional Chinese / English, defaulting to the browser language and saved in
+    localStorage. A test ensures both languages have exactly the same string keys.
+24. **Events filtered by repo**: all repos share one event file. Events now record their repo
+    root and the server only sends its own repo's events, so another project's `README.md` no
+    longer lights up this one's.
+25. **The activity feed keeps the whole history** (up to 1000 events), scrolls and filters; it
+    does not jump when new events arrive while you scroll back. Clicking a file flies the camera
+    there and flashes a ring; clicking a command expands the full command and the files it read.
+    Double-clicking a building also flies there.
+26. **Framing fix**: the reframing formula divided by the current zoom once too often, so the city
+    shrank to a dot after switching groups. Added a "fit" button; camera follow is now off by
+    default.
+27. **Multiple agents, part one: a source field and a file watcher**:
+    - Events gained `source` (claude-code, pi, watcher…); old events without it count as
+      claude-code. The feed shows "Claude 1", "pi 1", "File watcher", numbered per source. Claude
+      gets a cone marker, other agents a diamond, the watcher no marker.
+    - The server has a built-in file watcher (`server/watch.mjs`, on by default, `--no-watch` to
+      disable). Any write is recorded as a `source: "watcher"` event, so files changed by agents
+      without hooks, or by people, are visible, but **it does not know who changed them and cannot
+      block anything**.
+    - Noise reduction: git-ignored files (bin/, obj/, node_modules/) are skipped, folder changes
+      are skipped, and writes already reported by an agent's hook are not recorded twice. No false
+      events while forgekit was idle.
+    - Part two is the pi adapter (decision 29).
+28. **Toolbar redesign**: only the self-explanatory helpers became icons (fit, camera follow,
+    zones with a count badge, theme cycling on click, language as a short label). "Group by" and
+    "Compare branch" stayed as text, since no icon reads clearly and they are the main actions.
+    Emoji were replaced with one set of line SVGs (`ui/Icon.jsx`) that follow the theme. Every icon
+    has a Chinese and English tooltip. The toolbar has left (status), middle (grouping) and right
+    (compare + tools) sections and fits on one line at normal widths.
+29. **pi adapter (`adapters/pi/codecity.js`)**: does the same two things as the Claude hooks
+    through pi's extension API: `tool_call` checks zones before a tool runs (it can return
+    `{ block: true }`), and `tool_execution_end` records the event afterwards. pi events are first
+    converted to the Claude hook format and then go through the same `normalize` and zone logic,
+    so both agents follow the same rules.
+    - **Bug found by live testing**: pi's `tool_execution_end` carries no arguments, only the
+      result; arguments are kept by call id from `tool_execution_start`. A blocked call ends with
+      an error result and must not be recorded as a write.
+    - **Security gap found by live testing**: a real pi (qwen3.5-9b), after its edit was blocked,
+      **wrote into the zone with `echo … > locked/secret.ts`, and it worked**. Claude had the same
+      gap. Added `lib/bashTargets.mjs`, which recognizes redirection, `tee`, `sed -i`, `cp`, `mv`,
+      `rm`, `touch`, `git checkout --` and PowerShell write commands, and blocks them when the
+      target is in a zone. Claude's guard matcher gained `Bash|PowerShell` (forgekit's settings
+      and the install template are updated). Writes from inside an interpreter (`python -c`) are
+      still not caught; the file watcher records them afterwards.
+    - **Retested**: the same pi trying bash into the zone was blocked, the file was unchanged, and
+      the event recorded the blocked path.
+    - The test used the 9B model (about 10 GB, leaving 9 GB of VRAM, within the 4 to 6 GB rule) in
+      a throwaway repo in a temp folder, not forgekit; the model was unloaded afterwards.
+30. **Docs are English first**: the README is in English, with `README.zh-TW.md` alongside.
+31. **Notifications (blocked or out of scope)**: `lib/alerts.js` turns "blocked" and "scope
+    warning" into one alert list. A toast always appears at the top (gone after 7 seconds, click to
+    fly there); with the toolbar bell on, desktop notifications are sent too (browser permission is
+    requested the first time it is turned on). Only alerts under 15 seconds old notify, so history
+    resent on reconnect does not pop up all at once.
+32. **Scope check (`lib/scope.js`)**:
+    - **Declared**: the flag in the toolbar, then click blocks to add or remove them from the
+      allowed scope (stored in `data/scope.json`, `/api/scope`); blocks in scope are tinted light
+      green. Writes outside scope raise a warning but are **not blocked** (blocking is what zones
+      are for).
+    - **Not declared: inferred**, with two rules that can each explain themselves: "write without
+      read" (changing an existing file not read this session) and "new area" (after 5 or more
+      steps, changing an area not touched at all this session; area = the first two folder
+      levels). To be honest: Claude's Edit already requires a read first, so the first rule fires
+      less for Claude.
+    - **File watcher events are left out of inference**: they have no reads, so every one would
+      look like "write without read". Fixed after this noise showed up in testing.
+    - Display: buildings with a warning get a yellow cap; the feed gets ⚠ and a "warnings" filter.
+33. **Timeline replay**: "Replay this session" at the bottom replays the whole session from the
+    start, with play, pause, scrubbing and speeds (1×, 8×, 32×, 120×); every write (amber) and
+    block (red) is marked on the timeline. It takes the events before time T and shifts their
+    timestamps to "now", so coloring, rings, agent markers and camera follow replay with no
+    changes. The toolbar shows "Replaying"; toasts and notifications only consider live events, so
+    a replay does not set them off again.
+34. **Large-repo performance (results in `docs/performance.md`)**: a synthetic 20,000-file repo
+    ran at about 2 fps in Orca's built-in browser, froze the tab, and twice dropped Orca's browser
+    connection. Measurement moved to a separate Chrome (`bench/perf.mjs`, Playwright driving the
+    installed Chrome with a CPU profile) so Orca was not affected again. Three bottlenecks that
+    grew with scale were fixed: the feed draws only 120 rows and is memoized, 1,841 blocks became
+    one InstancedMesh, and building tints check only candidates. Same Chrome, before and after:
+    main thread busy 44% → 9%, first load 2,054 → 133 ms, memory 79 → 36 MB; replay at 8× still
+    runs at 61 fps.
+35. **Demo video (`demo/`)**: Remotion was considered (it renders frames from React, which suits
+    animated compositions but cannot film a real app with live streaming and WebGL animation).
+    Instead, **the real running app is recorded**: Playwright drives Chrome, frames come from the
+    CDP screencast (about 60 fps at 1080p) and are written to ffmpeg at a constant 30 fps; title
+    cards and bilingual captions are HTML/CSS laid over the page; the story's events are written
+    into a separate event file the way the hooks would. The App gained a bridge that exists only
+    with `?demo`, so the script can find buildings on screen. Take one was too dark, the action
+    happened in too small an area, the 20,000-file section had too many warnings, and the cursor
+    showed over title cards; take two (3:10) fixes these. The App itself improved along the way:
+    a brighter night theme, and no names on blocks that are too small.
 
-## ⚠️ 事故:pi 關掉了所有 Node 程序(步驟 3 Part C)
+## ⚠️ Incident: pi killed every Node process (step 3 Part C)
 
-- **經過**:pi 自己啟動伺服器手動測試,收尾時執行 `taskkill //F //IM node.exe`,強制關掉這台電腦上**所有** Node 程序。
-- **影響**:
-  - pi 自己也被關掉(它是 Node 程式)。我已重新啟動。
-  - Claude Code 的 codegraph MCP 斷線。重開 Claude Code 會恢復。
-  - 若當時你有其他 Node 程式在跑(開發伺服器等),也會一併被關掉。
-  - pi 的手動測試對真正的伺服器發了 PUT,在 `data/zones.json` 寫進 `server/**`。我已經刪除這個檔案。
-  - LM Studio 不受影響。
-- **後續防範**:之後每次派工都加上規則:不准依名稱關程序;不准啟動長時間執行的程式;不准寫入 `data/`。之後沒有再發生。我自己關伺服器時都是依 PID、只關自己啟動的那一個。
-- **教訓**:pi 沒有沙箱,它的 bash 工具能做任何事。派工規則必須把「不准做什麼」寫清楚,不能只寫「要做什麼」。
+- **What happened**: pi started the server itself for a manual test, and at the end ran
+  `taskkill //F //IM node.exe`, force-killing **every** Node process on this machine.
+- **Impact**:
+  - pi killed itself (it is a Node program). I restarted it.
+  - Claude Code's codegraph MCP disconnected. Restarting Claude Code restores it.
+  - Any other Node programs running at the time (dev servers and so on) were killed too.
+  - pi's manual test sent a PUT to the real server, writing `server/**` into `data/zones.json`. I
+    deleted that file.
+  - LM Studio was not affected.
+- **Prevention**: every handoff since includes these rules: never kill processes by name, never
+  start long-running programs, never write to `data/`. It has not happened again. When I stop a
+  server, I do it by PID and only for servers I started.
+- **Lesson**: pi has no sandbox, and its bash tool can do anything. Handoff rules must spell out
+  what is forbidden, not only what to do.
 
-## pi 的表現紀錄
+## How pi did
 
-- 步驟 1:一次完成,規格每一條都有對應測試,模稜兩可處主動列出假設。品質好。
-- 步驟 2 第一次:一次派 7 個檔案,Qwen 在思考裡把整份程式碼打草稿(61K 字元),撞到單次 16K 輸出上限被截斷,沒寫出任何檔案。
-- 步驟 2 改成三小批後:思考量 17K → 10K → 2K 字元,三批都一次通過。
-- 步驟 3:程式碼品質好,但 tail 漏掉兩個邊界情況、一個測試假設錯誤,手動測試時闖了禍(見事故)。
-- 步驟 4:Part B(R3F 相機)卡在推敲 effect 執行順序超過 10 分鐘,最後完成。3D 和 React 的細節對 27B 模型明顯比純 Node 邏輯難。
-- 步驟 5 Part A:activity 邏輯和測試寫得好;做到一半模型被卸載。
-- 整體:規格清楚、範圍小的純邏輯工作,pi 做得又快又好;需要設計判斷或視覺驗證的部分,由我接手比較有效率。
+- Step 1: done in one pass, with a test for every line of the spec and its assumptions listed
+  where the spec was ambiguous. Good quality.
+- Step 2, first try: 7 files in one batch. Qwen drafted all the code in its thinking (61K
+  characters), hit the 16K single-output limit, got cut off, and wrote no files.
+- Step 2 in three small batches: thinking went 17K → 10K → 2K characters, and all three passed
+  first time.
+- Step 3: good code, but tail missed two edge cases, one test assumption was wrong, and the manual
+  test caused the incident.
+- Step 4: Part B (the R3F camera) got stuck reasoning about effect order for over 10 minutes, then
+  finished. 3D and React details are clearly harder for a 27B model than plain Node logic.
+- Step 5 Part A: good activity logic and tests; the model was unloaded halfway.
+- Overall: pi is fast and good at small, clearly specified pure-logic work; parts that need design
+  judgment or visual checking go faster when I take them over.
