@@ -12,9 +12,9 @@ export const themes = {
     bloom: true,
     background: "#060a14",
     ground: "#0a1020",
-    districtBase: "#111a2e", // depth-0 slab; each level gets lighter
+    districtBase: "#16223d", // depth-0 slab; each level gets lighter
     districtStep: [0, 3, 6, 9, 12],
-    building: "#2a3653", // idle building: dark slate, below the bloom threshold
+    building: "#3b4c78", // idle building: slate blue, readable at overview yet well below the bloom threshold
     buildingHover: "#ffd27a",
     buildingSelected: "#ff8a5c",
     read: "#38c6ff",
@@ -35,7 +35,7 @@ export const themes = {
     panelBorder: "#26324d",
     hemiSky: "#9cb8ff",
     hemiGround: "#05070d",
-    hemiIntensity: 1.1,
+    hemiIntensity: 1.3,
     keyLight: "#cfe0ff",
     keyIntensity: 1.3,
     labelTopBg: "rgba(77, 163, 255, 0.22)",

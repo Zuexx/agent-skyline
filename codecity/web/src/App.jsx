@@ -4,6 +4,10 @@ import { Canvas, useThree } from "@react-three/fiber";
 import { MapControls, OrthographicCamera } from "@react-three/drei";
 import { Bloom, EffectComposer } from "@react-three/postprocessing";
 import CameraFollow from "./city/CameraFollow.jsx";
+import DemoBridge from "./city/DemoBridge.jsx";
+
+// `?demo` exposes a tiny hook for scripted recordings (see city/DemoBridge.jsx).
+const DEMO = typeof location !== "undefined" && new URLSearchParams(location.search).has("demo");
 import City from "./city/City.jsx";
 import Legend from "./ui/Legend.jsx";
 import ZoneBanner from "./ui/ZoneBanner.jsx";
@@ -305,6 +309,16 @@ export default function App() {
         <MapControls makeDefault maxPolarAngle={Math.PI / 2 - 0.05} onStart={() => setFollow(false)} />
         <CameraFollow target={latestTarget} enabled={follow} focus={focus} />
         <FitCamera width={view.width} depth={view.depth} nonce={fitNonce} />
+        {DEMO && (
+          <DemoBridge
+            worldOf={(p) => {
+              const i = indexByPath.get(p);
+              if (i == null) return null;
+              const { position, scale } = buildingTransform(view.buildings[i], {}, HEIGHT_SCALE);
+              return [position[0] - view.width / 2, position[1] + scale[1] / 2, position[2] - view.depth / 2];
+            }}
+          />
+        )}
         <City
           city={view}
           selected={selected}

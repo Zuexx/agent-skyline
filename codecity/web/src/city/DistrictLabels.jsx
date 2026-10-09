@@ -8,11 +8,13 @@ import { t } from "../lib/i18n.js";
 // level at a time, so the city never turns into a wall of text. Each sign sits on the district's
 // far corner (smallest x and z), which is its top tip in the isometric view.
 const LEVEL_STEPS = [1, 1.8, 3.2, 5]; // zoom / fitZoom needed to show depth 1, 2, 3, 4
+const MIN_PX = 70; // smallest district side, in screen pixels (ortho zoom = pixels per unit), worth a sign
 
 // In grouped views the top-level districts are group ids (`code`, `added`...), shown translated.
 export default function DistrictLabels({ districts, fileCounts, grouped = false }) {
   const camera = useThree((s) => s.camera);
   const [maxDepth, setMaxDepth] = useState(1);
+  const [zoom, setZoom] = useState(camera.zoom);
   const clock = useRef(0);
 
   useFrame((_, delta) => {
@@ -23,11 +25,14 @@ export default function DistrictLabels({ districts, fileCounts, grouped = false 
     let d = 0;
     while (d < LEVEL_STEPS.length && rel >= LEVEL_STEPS[d] * 0.999) d++;
     if (d !== maxDepth) setMaxDepth(d);
+    if (Math.abs(camera.zoom - zoom) > zoom * 0.1) setZoom(camera.zoom);
   });
 
   const shown = useMemo(
-    () => (districts ?? []).filter((d) => d.depth >= 1 && d.depth <= maxDepth && d.w > 0),
-    [districts, maxDepth]
+    // A sign needs room: districts narrower than MIN_PX on screen stay unlabeled until zoomed in,
+    // so a cluster of tiny folders (.config, .github, ...) does not pile its names on top of each other.
+    () => (districts ?? []).filter((d) => d.depth >= 1 && d.depth <= maxDepth && Math.min(d.w, d.d) * zoom >= MIN_PX),
+    [districts, maxDepth, zoom]
   );
 
   return (
