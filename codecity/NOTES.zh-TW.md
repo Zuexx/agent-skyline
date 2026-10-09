@@ -6,7 +6,7 @@
 
 - 起點:WareTrack 拆解(`../waretrack/NOTES.md`)的通用公式,套用到程式碼上。
 - 定位:個人專案,全部本機執行,不使用公司資源(原本考慮的 Azure AI 已放棄)。
-- 狀態:開發順序的 1 到 4 步、session 重播、git diff 比較都已實作;框選指派工作、跳到 VS Code、LLM 查詢還沒做(見 `PROGRESS.zh-TW.md`)。
+- 狀態:開發順序裡除了 LLM 查詢,都已實作:事件、禁區、城市、框選指派工作、跳到 VS Code、session 重播、git diff 比較、依賴道路、依風險排序的 review(見 `PROGRESS.zh-TW.md`)。架構邊界檢查還沒做。
 
 ## 一句話定位
 

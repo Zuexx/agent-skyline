@@ -8,8 +8,9 @@
 - Origin: the general formula from the WareTrack teardown (`../waretrack/NOTES.md`), applied to code.
 - Scope: a personal project that runs entirely on this machine and uses no company resources (the
   earlier Azure AI idea was dropped).
-- Status: steps 1 to 4 of the build order, session replay and git diff comparison are built.
-  Box-select task assignment, jumping to VS Code and LLM queries are not (see `PROGRESS.md`).
+- Status: everything in the build order is built except LLM queries: events, zones, the city, box-select task assignment, jumping to VS Code, session replay, git
+  diff comparison, dependency roads and the risk-ordered review (see `PROGRESS.md`).
+  Architecture boundary checks are not built.
 
 ## In one sentence
 

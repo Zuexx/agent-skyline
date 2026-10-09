@@ -7,7 +7,9 @@ building height is line count — and uses it to **supervise AI coding agents**:
 
 - see live which files an agent reads and writes;
 - lock folders so that writes into them are **blocked before they happen**;
-- compare a branch with `main` and see at a glance what changed, and whether tests came with it.
+- compare a branch with `main` and see at a glance what changed, and whether tests came with it;
+- review changes riskiest first, follow a file's dependency roads, and pick files with a box to
+  hand an agent a task scoped to them.
 
 It works with **Claude Code** (hooks) and **pi** (an extension). Anything else — other agents, or
 people — is still seen through a file watcher, just without knowing who made the change.
@@ -58,7 +60,8 @@ rules as the Claude Code hooks. Events show up as "pi 1", "pi 2", …
 
 The server watches the repo. Changes no agent reported appear as **File watcher** events:
 visible, but not attributed and not blockable. Git-ignored paths (`bin/`, `node_modules/`, …) are
-skipped, and a change an agent already reported is not logged twice.
+skipped, a change an agent already reported is not logged twice, and a notification without a
+content change (on Windows, a plain read fires one) is ignored.
 
 ## Locked zones and shell commands
 
@@ -75,8 +78,15 @@ afterwards.
 | Group by | Folders / Role (code, tests, specs, docs…) / This session / Diff. Buildings fly to their new places |
 | Activity | Bottom left; filter, scroll back; click a file to fly there, click a command to expand it |
 | Compare | Pick a branch to compare with main; the city is colored by git diff; click a building for its diff |
+| File details | Click a building: lines, activity, the diff when comparing, **Open in VS Code** |
+| Dependency roads | Clicking a building also draws arcs: violet to what it uses, pink from what uses it, green from its tests (JS/TS imports, C# type use; the panel lists them) |
+| Review list | List icon: the compared branch's changes, or this session's writes, riskiest first, with reasons (warnings, no tests, recent churn, many dependents, large change). Tick files off as you go |
+| Assign a task | Select icon → drag a box over buildings (or click them). Copy the task with the files as its scope, or save them as the task scope |
+| Task scope | Flag icon → click districts; writes outside raise a warning. With nothing declared, the scope is inferred |
 | Locked zones | Lock icon → click districts to lock or unlock |
-| Camera | Map icon: whole city. Target icon: follow the latest action. Double-click a building to fly to it |
+| Alerts | Toasts for blocked and out-of-scope writes; the bell turns on desktop notifications |
+| Replay | Bottom: replay the session at 1×–120× |
+| Camera | Left drag pans, right drag rotates, wheel zooms. Map icon: whole city. Target icon: follow the latest action. Double-click a building to fly to it |
 | Theme / language | Night, day, or system; 繁中 or English |
 
 ## Tests

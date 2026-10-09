@@ -11,8 +11,10 @@ checked clean after every step).
 
 - The original five steps are done, and so are everything added after them: grouping switch, git
   diff, themes, i18n, multiple agents (pi adapter, file watcher), notifications, scope check,
-  timeline replay, large-repo performance, and the demo video.
-- Tests: 89 at the root (`npm test`) and 71 in the front end (`cd web && npm test`), all passing.
+  timeline replay, large-repo performance, the demo video, and then the remaining ideas from
+  `NOTES.md`: open in VS Code, dependency roads, the risk-ordered review list, and box-select
+  task assignment.
+- Tests: 96 at the root (`npm test`) and 89 in the front end (`cd web && npm test`), all passing.
 - Every feature was checked in the browser. Zone blocking, including shell writes, was verified
   with the real Claude hook and a real pi session.
 - Demo video: `demo/codecity-demo.mp4` (3:10, git-ignored; to re-record, see `demo/README.md`).
@@ -25,6 +27,12 @@ checked clean after every step).
 | `401ea59` | Timeline replay |
 | `4f4d5b3` | Performance at 20,000 files |
 | `f0ff9da` | Demo video; brighter night city |
+| `77d3af3` | Notes and progress log English-first |
+| `a945399` | Open in VS Code; camera controls in the legend |
+| `bbd51b8` | File watcher no longer logs reads as writes |
+| `c3e548f` | Dependency roads |
+| `1a057ba` | Risk-ordered review list; branch dependencies while comparing |
+| `3895f92` | Box-select task assignment |
 
 ## How to use it
 
@@ -41,7 +49,8 @@ checked clean after every step).
 | Action | How |
 |---|---|
 | Pan / zoom / rotate | Left drag / wheel / right drag; double-click a building to fly to it |
-| File details | Click a building; the side panel shows lines, read/write counts, and the diff when comparing |
+| File details | Click a building; the side panel shows lines, read/write counts, dependencies, the diff when comparing, and an Open in VS Code link |
+| Review / assign a task | The list icon / the select icon in the toolbar |
 | Locked zones / allowed scope | The lock / flag in the toolbar, then click blocks to toggle |
 | Grouping, branch comparison | The drop-downs in the middle and right of the toolbar |
 | Replay | The timeline at the bottom |
@@ -222,6 +231,40 @@ Colors are explained in the legend at the bottom right.
     happened in too small an area, the 20,000-file section had too many warnings, and the cursor
     showed over title cards; take two (3:10) fixes these. The App itself improved along the way:
     a brighter night theme, and no names on blocks that are too small.
+36. **Open in VS Code**: the city now carries the absolute repo path, and the detail panel links
+    to `vscode://file/<path>:1`. Only for files in the working tree; a file that exists only on a
+    compared branch has nothing to open. The legend also lists the mouse controls (right drag
+    rotates), since nothing on screen said so.
+37. **File watcher bug: reads logged as writes**: while building dependency roads, reading every
+    source file made the watcher log about 500 "writes" in forgekit, which was clean. On
+    Windows, `fs.watch` also fires on reads (libuv asks for last-access changes). A notification
+    now counts only when the file's mtime or size changed, or, the first time a file is seen,
+    when its mtime is as new as the notification. A regression test fails on the old code. Two
+    earlier bursts in the event log had the same cause; 818 such events whose file had not been
+    modified since were removed from `data/events.jsonl` (backup kept as
+    `events.jsonl.bak-before-prune`). Decision 27 said "no false events while idle", which was
+    true only because nothing was reading.
+38. **Dependency roads (`server/deps.mjs`, `/api/deps`)**: no parser and no CodeGraph index
+    (forgekit is not indexed, and indexing is the user's call). JS/TS: relative imports and
+    tsconfig `paths` aliases, resolved against the repo's file list. C#: a file uses a type when
+    it names it and the type's namespace is visible to it (own namespace and parents, `using`,
+    `global using`), with comments and strings stripped. forgekit: 459 edges in 21 ms. Only the
+    selected building's roads are drawn, since the whole graph is a hairball; violet = uses,
+    pink = used by, green = tests.
+39. **Review list ordered by risk (`lib/risk.js`, `/api/churn`)**: changed files (the compared
+    branch's diff, or this session's writes), each scored from signals it can explain: warning,
+    code no test uses, commits in the last 90 days, dependents, change size, a deleted file still
+    in use. Tests, docs and assets are discounted. The first live check found a bug: while
+    comparing, "no tests" was judged from the working tree, which did not have the branch's new
+    tests. Dependencies now come from the compared branch (`/api/deps?ref=`, read from git
+    objects in one `cat-file` process).
+40. **Box-select task assignment**: a select tool frees the left mouse button from panning
+    (right-drag rotation and wheel zoom keep working); drag a box or click buildings to pick
+    files. The task panel copies "task + these files as the scope" for pasting into Claude Code,
+    or saves the files as the declared task scope so the scope check warns about anything else.
+    It cannot start Claude Code itself: a browser page has no way in, and launching agents from
+    the server would be a much bigger trust step. The drag state lives in a ref, because pointer
+    events can arrive faster than React re-renders (the first version dropped the box).
 
 ## ⚠️ Incident: pi killed every Node process (step 3 Part C)
 
