@@ -2,6 +2,10 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { theme } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { agentColorIndex, agentKeyOf, formatAgo, formatClock, sourceOf, splitPath } from "../lib/activity.js";
+import { warningKey } from "../lib/scope.js";
+
+// Scope warning attached to a feed entry, if any (see lib/scope.js).
+const warningOf = (ev, warnings) => (ev.kind === "write" && warnings ? warnings.get(warningKey(ev, ev.paths?.[0])) : null);
 
 const FILTERS = {
   all: () => true,
@@ -9,6 +13,7 @@ const FILTERS = {
   write: (ev) => ev.kind === "write",
   blocked: (ev) => ev.kind === "blocked",
   exec: (ev) => ev.kind === "exec" || ev.kind === "search",
+  warn: (ev, warnings) => ev.kind === "blocked" || Boolean(warningOf(ev, warnings)),
 };
 
 const kindColor = (kind) =>
@@ -28,7 +33,7 @@ function agentLabel(ev, agentSeq) {
   return `${name.startsWith("source.") ? source : name} ${agentSeq[agentKeyOf(ev)] ?? "?"}`;
 }
 
-export default function Feed({ feed, agentSeq = {}, onFocusPath }) {
+export default function Feed({ feed, agentSeq = {}, warnings = null, onFocusPath }) {
   const [filter, setFilter] = useState("all");
   const [open, setOpen] = useState(null); // key of the expanded command row
   const [now, setNow] = useState(Date.now());
@@ -41,7 +46,7 @@ export default function Feed({ feed, agentSeq = {}, onFocusPath }) {
     return () => clearInterval(timer);
   }, []);
 
-  const rows = useMemo(() => (feed ?? []).filter(FILTERS[filter]), [feed, filter]);
+  const rows = useMemo(() => (feed ?? []).filter((ev) => FILTERS[filter](ev, warnings)), [feed, filter, warnings]);
 
   // While paused, keep the rows the user is looking at in place as new ones arrive on top.
   const prevHeight = useRef(0);
@@ -142,6 +147,7 @@ export default function Feed({ feed, agentSeq = {}, onFocusPath }) {
               ev={ev}
               now={now}
               agentLabel={agentLabel(ev, agentSeq)}
+              warning={warningOf(ev, warnings)}
               open={open === rowKey(ev)}
               onToggle={() => setOpen((o) => (o === rowKey(ev) ? null : rowKey(ev)))}
               onFocusPath={onFocusPath}
@@ -154,7 +160,7 @@ export default function Feed({ feed, agentSeq = {}, onFocusPath }) {
   );
 }
 
-function Row({ ev, now, agentLabel, open, onToggle, onFocusPath, highlight }) {
+function Row({ ev, now, agentLabel, warning, open, onToggle, onFocusPath, highlight }) {
   const color = kindColor(ev.kind);
   const agentColor =
     sourceOf(ev) === "watcher" ? theme.muted : theme.agentColors[agentColorIndex(agentKeyOf(ev), theme.agentColors.length)];
@@ -201,6 +207,11 @@ function Row({ ev, now, agentLabel, open, onToggle, onFocusPath, highlight }) {
           {isFile ? (
             <>
               <span style={{ display: "block", fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {warning && (
+                  <span title={`${t(`alert.${warning.rule}`)}: ${t(`alert.${warning.rule}Hint`)}`} style={{ color: theme.warn, marginRight: 4 }}>
+                    ⚠
+                  </span>
+                )}
                 {name}
                 {ev.repeat > 1 && <span style={{ color: theme.muted, fontWeight: 400 }}> ×{ev.repeat}</span>}
               </span>

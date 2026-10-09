@@ -20,8 +20,10 @@ export default function City({
   diff = null,
   ping = null,
   locked = [],
-  zoneMode = false,
+  allowed = [],
+  editing = false,
   onToggleDistrict,
+  warnPaths = null,
 }) {
   const districtDepthByPath = useMemo(
     () => Object.fromEntries((city.districts ?? []).map((d) => [d.path, d.depth])),
@@ -66,10 +68,12 @@ export default function City({
       <Districts
         districts={city.districts ?? []}
         locked={locked}
-        zoneMode={zoneMode}
+        allowed={allowed}
+        editing={editing}
         onToggle={onToggleDistrict}
       />
       <LockCaps buildings={city.buildings ?? []} roofs={roofs} locked={locked} />
+      {warnPaths?.size > 0 && <LockCaps buildings={city.buildings ?? []} roofs={roofs} paths={warnPaths} color={theme.warn} lift={0.14} />}
       <Buildings
         buildings={city.buildings ?? []}
         districtDepthByPath={districtDepthByPath}

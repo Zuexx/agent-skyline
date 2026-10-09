@@ -132,7 +132,17 @@ async function serveStatic(res, url, distRoot) {
 }
 
 // webRoot is overridable so tests do not depend on whether web/dist has been built.
-export function createServer({ repo, logFile, zonesFile, webRoot = defaultWebRoot }) {
+export function createServer({ repo, logFile, zonesFile, scopeFile = null, webRoot = defaultWebRoot }) {
+  // The declared task scope lives next to the zones file unless given (tests pass their own).
+  const scopePath = scopeFile ?? path.join(path.dirname(zonesFile), "scope.json");
+  const loadScope = async () => {
+    try {
+      const data = JSON.parse(await readFile(scopePath, "utf8"));
+      return { allow: Array.isArray(data.allow) ? data.allow.filter((g) => typeof g === "string") : [] };
+    } catch {
+      return { allow: [] }; // missing or unreadable: nothing declared, the UI infers instead
+    }
+  };
   let cityCache = null;
 
   async function getCity(forceRescan) {
@@ -162,8 +172,16 @@ export function createServer({ repo, logFile, zonesFile, webRoot = defaultWebRoo
   }
 
   // Validate the body (size while streaming, shape after), write atomically via <file>.tmp +
-  // rename, then reload so the response is what is actually on disk.
+  // rename, then reload so the response is what is actually on disk. Shared by the locked-zone
+  // list ({ locked }) and the declared task scope ({ allow }): both are lists of globs.
   function handlePutZones(req, res) {
+    handlePutList(req, res, zonesFile, "locked", async () => {
+      const zones = await loadZones(zonesFile);
+      return { status: zones.status, locked: zones.locked ?? [] };
+    });
+  }
+
+  function handlePutList(req, res, file, key, reload) {
     const chunks = [];
     let size = 0;
     let rejected = false;
@@ -191,30 +209,29 @@ export function createServer({ repo, logFile, zonesFile, webRoot = defaultWebRoo
           return;
         }
         if (data === null || typeof data !== "object" || Array.isArray(data)) {
-          json(res, 400, { error: 'body must be a JSON object like { "locked": [...] }' });
+          json(res, 400, { error: `body must be a JSON object like { "${key}": [...] }` });
           return;
         }
-        const locked = data.locked;
-        if (!Array.isArray(locked)) {
-          json(res, 400, { error: '"locked" must be an array of strings' });
+        const list = data[key];
+        if (!Array.isArray(list)) {
+          json(res, 400, { error: `"${key}" must be an array of strings` });
           return;
         }
-        if (locked.length > MAX_LOCKED_ENTRIES) {
-          json(res, 400, { error: `at most ${MAX_LOCKED_ENTRIES} locked entries` });
+        if (list.length > MAX_LOCKED_ENTRIES) {
+          json(res, 400, { error: `at most ${MAX_LOCKED_ENTRIES} ${key} entries` });
           return;
         }
-        if (!locked.every((entry) => typeof entry === "string" && entry.length > 0)) {
-          json(res, 400, { error: 'each locked entry must be a non-empty string' });
+        if (!list.every((entry) => typeof entry === "string" && entry.length > 0)) {
+          json(res, 400, { error: `each ${key} entry must be a non-empty string` });
           return;
         }
 
-        await mkdir(path.dirname(zonesFile), { recursive: true });
-        const tmp = zonesFile + ".tmp";
-        await writeFile(tmp, JSON.stringify({ locked }, null, 2) + "\n", "utf8");
-        await rename(tmp, zonesFile); // atomic replace (libuv replaces an existing destination on all platforms)
+        await mkdir(path.dirname(file), { recursive: true });
+        const tmp = file + ".tmp";
+        await writeFile(tmp, JSON.stringify({ [key]: list }, null, 2) + "\n", "utf8");
+        await rename(tmp, file); // atomic replace (libuv replaces an existing destination on all platforms)
 
-        const zones = await loadZones(zonesFile);
-        json(res, 200, { status: zones.status, locked: zones.locked ?? [] });
+        json(res, 200, await reload());
       } catch (err) {
         if (!res.headersSent) json(res, 500, { error: err.message });
         else res.end();
@@ -295,6 +312,14 @@ export function createServer({ repo, logFile, zonesFile, webRoot = defaultWebRoo
       }
       if (p === "/api/zones" && req.method === "PUT") {
         handlePutZones(req, res);
+        return;
+      }
+      if (p === "/api/scope" && req.method === "GET") {
+        json(res, 200, await loadScope());
+        return;
+      }
+      if (p === "/api/scope" && req.method === "PUT") {
+        handlePutList(req, res, scopePath, "allow", loadScope);
         return;
       }
       if (p.startsWith("/api/")) {

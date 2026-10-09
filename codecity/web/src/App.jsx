@@ -11,10 +11,16 @@ import TopBar from "./ui/TopBar.jsx";
 import DetailPanel from "./ui/DetailPanel.jsx";
 import Feed from "./ui/Feed.jsx";
 import CompareSummary from "./ui/CompareSummary.jsx";
+import ScopeBanner from "./ui/ScopeBanner.jsx";
+import Toasts from "./ui/Toasts.jsx";
 import { useActivity } from "./lib/useActivity.js";
 import { useZones } from "./lib/useZones.js";
 import { useCompare } from "./lib/useCompare.js";
 import { usePrefs } from "./lib/usePrefs.js";
+import { useScope } from "./lib/useScope.js";
+import { useAlerts, requestNotify } from "./lib/useAlerts.js";
+import { alertsFrom } from "./lib/alerts.js";
+import { computeWarnings } from "./lib/scope.js";
 import { parentDir } from "./lib/parent.js";
 import { applyTheme, theme } from "./theme.js";
 import { setLocale, t } from "./lib/i18n.js";
@@ -100,7 +106,7 @@ function Status({ children }) {
 
 export default function App() {
   // Preferences first: theme and language must be applied before anything renders this pass.
-  const { prefs, resolvedTheme, setTheme, setLocale: setLocalePref } = usePrefs();
+  const { prefs, resolvedTheme, setTheme, setLocale: setLocalePref, setNotify } = usePrefs();
   applyTheme(resolvedTheme);
   setLocale(prefs.locale);
 
@@ -120,8 +126,11 @@ export default function App() {
   // How files are grouped into districts: folder / role / touched / diff (see lib/views.js).
   const [viewId, setViewId] = useState("folder");
   const zones = useZones();
-  // In zone mode clicks lock/unlock districts instead of selecting buildings.
+  // In zone mode clicks lock/unlock districts instead of selecting buildings; in scope mode they
+  // add or remove districts from the declared task scope.
   const [zoneMode, setZoneMode] = useState(false);
+  const scope = useScope();
+  const [scopeMode, setScopeMode] = useState(false);
   // Follow mode: the camera glides to wherever the latest event happened. Off by default, so the
   // page opens on the whole city.
   const [follow, setFollow] = useState(false);
@@ -137,6 +146,7 @@ export default function App() {
       if (e.key === "Escape") {
         setSelected(null);
         setZoneMode(false);
+        setScopeMode(false);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -205,6 +215,28 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [unknownKey, compare.active]);
 
+  // Scope check over the working tree's activity: declared globs, or inference when none.
+  const warnings = useMemo(
+    () => computeWarnings(activity.feed, { declared: scope.allow, known: liveIndex }),
+    [activity.feed, scope.allow, liveIndex]
+  );
+  const warnPaths = useMemo(() => new Set([...warnings.values()].map((w) => w.path)), [warnings]);
+  const alerts = useMemo(() => alertsFrom(activity.feed, warnings), [activity.feed, warnings]);
+  const agentName = (a) => {
+    if (a.source === "watcher") return t("source.watcher");
+    const name = t(`source.${a.source}`);
+    return `${name.startsWith("source.") ? a.source : name} ${activity.agentSeq?.[a.agent] ?? ""}`.trim();
+  };
+  const describeAlert = (a) => ({
+    title: a.level === "block" ? t("alert.blocked") : t(`alert.${a.rule}`),
+    body: a.level === "block" ? `${agentName(a)} · ${a.path ?? ""}` : `${agentName(a)} · ${t(`alert.${a.rule}Hint`)}`,
+  });
+  const { toasts, dismiss } = useAlerts(alerts, {
+    notify: prefs.notify,
+    describe: describeAlert,
+    onClick: (a) => a.path && focusOn(indexByPath.get(a.path)),
+  });
+
   const cameraPosition = useMemo(() => {
     if (!liveCity) return [1, 1, 1];
     const dist = Math.max(Number(liveCity.width) || 0, Number(liveCity.depth) || 0) * 1.2 + 30;
@@ -245,7 +277,7 @@ export default function App() {
       style={{
         position: "fixed",
         inset: 0,
-        cursor: zoneMode ? "crosshair" : "auto",
+        cursor: zoneMode || scopeMode ? "crosshair" : "auto",
         background: theme.background,
         // Native widgets (scrollbars, selects) follow the theme instead of the OS default.
         colorScheme: theme.bloom ? "dark" : "light",
@@ -266,17 +298,21 @@ export default function App() {
           city={view}
           selected={selected}
           onSelect={(i) => {
-            // A building click in zone mode means its parent district.
-            if (zoneMode) zones.toggleDistrict(districtPathFor(city.buildings[i], city.districts));
+            // A building click in zone or scope mode means its parent district.
+            const district = districtPathFor(city.buildings[i], city.districts);
+            if (zoneMode) zones.toggleDistrict(district);
+            else if (scopeMode) scope.toggleDistrict(district);
             else setSelected(i);
           }}
-          onFocus={(i) => !zoneMode && focusOn(i)}
+          onFocus={(i) => !zoneMode && !scopeMode && focusOn(i)}
           activity={activity}
           diff={compare.active ? compare.diff : null}
           ping={focus}
           locked={compare.active ? [] : zones.locked}
-          zoneMode={zoneMode}
-          onToggleDistrict={zones.toggleDistrict}
+          allowed={compare.active ? [] : scope.allow}
+          editing={zoneMode || scopeMode}
+          onToggleDistrict={zoneMode ? zones.toggleDistrict : scope.toggleDistrict}
+          warnPaths={compare.active ? null : warnPaths}
         />
         {/* Night only: colors pushed above 1.0 (active buildings, pulses, agents) cross the threshold. */}
         {theme.bloom && (
@@ -308,8 +344,25 @@ export default function App() {
         onToggleZoneMode={() => {
           compare.setHead(null); // zones apply to the working tree, not to another branch
           setViewId("folder");
+          setScopeMode(false);
           setZoneMode((z) => !z);
           setSelected(null);
+        }}
+        scopeMode={scopeMode}
+        onToggleScopeMode={() => {
+          compare.setHead(null);
+          setViewId("folder");
+          setZoneMode(false);
+          setScopeMode((s) => !s);
+          setSelected(null);
+        }}
+        scopeCount={scope.allow.length}
+        notify={prefs.notify}
+        onToggleNotify={async () => {
+          if (prefs.notify) return setNotify(false);
+          // Permission must be requested from a click. If the browser refuses, the bell stays off;
+          // toasts inside the page keep working either way.
+          if (await requestNotify()) setNotify(true);
         }}
         lockedCount={zones.locked.length}
         zonesStatus={zones.status}
@@ -320,9 +373,13 @@ export default function App() {
         onLocale={setLocalePref}
       />
       {zoneMode && <ZoneBanner locked={zones.locked} onUnlockDistrict={zones.toggleDistrict} onDone={() => setZoneMode(false)} />}
+      {scopeMode && (
+        <ScopeBanner allow={scope.allow} onRemoveDistrict={scope.toggleDistrict} onClear={scope.clear} onDone={() => setScopeMode(false)} />
+      )}
+      <Toasts toasts={toasts} describe={describeAlert} onDismiss={dismiss} onOpen={(a) => a.path && focusOn(indexByPath.get(a.path))} />
       <CompareSummary compare={compare} onClose={() => compare.setHead(null)} />
       <Legend comparing={compare.active} />
-      <Feed feed={activity.feed} agentSeq={activity.agentSeq} onFocusPath={(p) => focusOn(indexByPath.get(p))} />
+      <Feed feed={activity.feed} agentSeq={activity.agentSeq} warnings={warnings} onFocusPath={(p) => focusOn(indexByPath.get(p))} />
       {selectedBuilding && (
         <DetailPanel
           building={selectedBuilding}

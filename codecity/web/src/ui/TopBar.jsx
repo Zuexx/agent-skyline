@@ -97,6 +97,11 @@ export default function TopBar({
   compare,
   zoneMode = false,
   onToggleZoneMode,
+  scopeMode = false,
+  onToggleScopeMode,
+  scopeCount = 0,
+  notify = false,
+  onToggleNotify,
   lockedCount = 0,
   zonesStatus,
   zonesError,
@@ -223,6 +228,21 @@ export default function TopBar({
           badge={lockedCount}
           label={t("top.zonesTip", { count: lockedCount ? t("top.zonesTipCount", { n: lockedCount }) : "", hint: t("top.zonesHint") })}
           onClick={onToggleZoneMode}
+        />
+        <IconButton
+          icon="flag"
+          on={scopeMode}
+          accent={theme.added}
+          badge={scopeCount}
+          label={t("top.scopeTip", { count: scopeCount ? t("top.scopeTipCount", { n: scopeCount }) : t("top.scopeInferred") })}
+          onClick={onToggleScopeMode}
+        />
+        <IconButton
+          icon="bell"
+          on={notify}
+          accent={theme.written}
+          label={t("top.notifyTip", { state: notify ? t("top.on") : t("top.off") })}
+          onClick={onToggleNotify}
         />
         <Divider />
         <IconButton

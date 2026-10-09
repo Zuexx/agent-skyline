@@ -65,10 +65,20 @@ const timer = setInterval(() => {
   const agent = agents[sent % agents.length];
   const p = pick(agent.area);
   agent.step++;
+  // Like a real agent: read a file, and sometimes edit one it has already read.
+  agent.read = agent.read ?? [];
   if (agent.step % 9 === 0) emit(agent, "Edit", "blocked", p, `codecity: ${p} is in locked zone (simulated)`);
-  else if (agent.step % 4 === 0) emit(agent, "Edit", "write", p);
-  else emit(agent, "Read", "read", p);
+  // Once in a while, a stray edit far from the current area (what the scope check is for).
+  else if (agent.step % 37 === 0) emit(agent, "Edit", "write", pick(files));
+  else if (agent.step % 4 === 0 && agent.read.length) emit(agent, "Edit", "write", pick(agent.read));
+  else {
+    emit(agent, "Read", "read", p);
+    agent.read.push(p);
+  }
   // Now and then an agent moves on to another part of the repo.
-  if (agent.step % 25 === 0) agent.area = pick(areas);
+  if (agent.step % 25 === 0) {
+    agent.area = pick(areas);
+    agent.read = [];
+  }
   if (++sent >= args.count) clearInterval(timer);
 }, args.interval);

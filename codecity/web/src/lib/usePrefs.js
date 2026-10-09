@@ -6,9 +6,9 @@ const KEY = "codecity.prefs";
 function load() {
   try {
     const p = JSON.parse(localStorage.getItem(KEY) || "{}");
-    return { theme: p.theme ?? "auto", locale: p.locale ?? browserLocale() };
+    return { theme: p.theme ?? "auto", locale: p.locale ?? browserLocale(), notify: p.notify === true };
   } catch {
-    return { theme: "auto", locale: browserLocale() };
+    return { theme: "auto", locale: browserLocale(), notify: false };
   }
 }
 
@@ -54,5 +54,6 @@ export function usePrefs() {
     resolvedTheme,
     setTheme: (theme) => setPrefs((p) => ({ ...p, theme })),
     setLocale: (locale) => setPrefs((p) => ({ ...p, locale })),
+    setNotify: (notify) => setPrefs((p) => ({ ...p, notify })),
   };
 }

@@ -57,6 +57,15 @@ describe("computeWarnings without a declared scope", () => {
   });
 });
 
+describe("computeWarnings and the file watcher", () => {
+  it("never judges watcher events, which have no reads to compare against", () => {
+    const w = computeWarnings(feedOf(ev("write", "api/Anvil/a.cs", { source: "watcher", session: "watcher" })), {
+      known: new Set(["api/Anvil/a.cs"]),
+    });
+    expect(rules(w)).toEqual([]);
+  });
+});
+
 describe("computeWarnings with a declared scope", () => {
   it("flags only writes outside the declared globs", () => {
     const w = computeWarnings(feedOf(ev("write", "api/Anvil/x.cs"), ev("write", "app/y.ts")), {

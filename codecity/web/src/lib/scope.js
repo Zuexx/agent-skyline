@@ -9,7 +9,7 @@
 //   has not touched at all this session. An area is the first two folder levels ("api/Anvil").
 // Warnings never block anything; blocking is what locked zones are for.
 import { matchGlob } from "../../../lib/glob.mjs";
-import { agentKeyOf } from "./activity.js";
+import { agentKeyOf, sourceOf } from "./activity.js";
 
 export const MIN_EVENTS = 5;
 
@@ -35,6 +35,9 @@ export function computeWarnings(feed, { declared = null, known = new Set(), minE
 
   for (let i = (feed?.length ?? 0) - 1; i >= 0; i--) {
     const ev = feed[i];
+    // The file watcher has no session and never reads: every change it sees would look blind and
+    // out of place. Its events are shown, but not judged.
+    if (sourceOf(ev) === "watcher") continue;
     const key = agentKeyOf(ev);
     if (!agents.has(key)) agents.set(key, { reads: new Set(), areas: new Set(), seen: 0 });
     const a = agents.get(key);
