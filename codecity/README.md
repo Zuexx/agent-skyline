@@ -30,6 +30,15 @@ Open http://127.0.0.1:4477. The server only listens on 127.0.0.1.
 
 Options: `--port <n>`, `--no-watch` (turn off the file watcher).
 
+### Which folders it can watch
+
+Any folder that is a **git repository**, code or not: notes, docs, a writing project, data files
+all work. Every file is a building and its height is its line count (binary files are flat).
+Files git ignores (`.gitignore`) are left out; new files show up before anyone runs `git add`.
+A folder that is not a repository yet only needs `git init` (no commit required). Git is what
+gives the city its file list, branch comparison, uncommitted diffs and history; dependency roads
+only exist for JS/TS and C#.
+
 ## Connect an agent
 
 ### Claude Code

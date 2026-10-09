@@ -39,6 +39,23 @@ test("scanRepo lists staged files with slash paths and counts lines", async (t) 
   });
 });
 
+test("scanRepo includes new files before git add, but not ignored ones", async (t) => {
+  await withTempRepo(t, async (dir) => {
+    await writeFile(path.join(dir, ".gitignore"), "build/\n");
+    await writeFile(path.join(dir, "tracked.md"), "t\n");
+    execFileSync("git", ["add", "-A"], { cwd: dir });
+    // What an agent leaves behind: a new file nobody has added, and build output.
+    await writeFile(path.join(dir, "new.ts"), "n\n");
+    await mkdir(path.join(dir, "build"));
+    await writeFile(path.join(dir, "build", "out.js"), "o\n");
+
+    assert.deepEqual(
+      scanRepo(dir).files.map((f) => f.path),
+      [".gitignore", "new.ts", "tracked.md"]
+    );
+  });
+});
+
 test("scanRepo reports lines: 0 for binary and over-2MB files", async (t) => {
   await withTempRepo(t, async (dir) => {
     // \0 inside the first 8000 bytes -> binary.

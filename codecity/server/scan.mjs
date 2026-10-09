@@ -1,6 +1,7 @@
 // Scan a git repository into { root, files: [{ path, lines }] }.
-// The file list comes from `git ls-files -z` (the index), so staged-but-uncommitted
-// files are included; line counts come from disk, so the scan reflects what is on disk.
+// The file list comes from `git ls-files` (the index plus untracked files that are not ignored),
+// so new and staged-but-uncommitted files are included; line counts come from disk, so the scan
+// reflects what is on disk.
 
 import { execFileSync } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
@@ -10,8 +11,14 @@ const MAX_COUNTED_BYTES = 2 * 1024 * 1024; // files over this size get lines: 0
 const BINARY_PROBE_BYTES = 8000; // a \0 within the first N bytes means binary
 
 export function scanRepo(root) {
-  // The default 1 MB output cap is not enough for a big repo's file list (VS Code's is over 1 MB).
-  const out = execFileSync("git", ["ls-files", "-z"], { cwd: root, encoding: "buffer", maxBuffer: 256 * 1024 * 1024 });
+  // Tracked files plus untracked ones git does not ignore: a file an agent just created is a
+  // building before anyone runs `git add`. The default 1 MB output cap is not enough for a big
+  // repo's file list (VS Code's is over 1 MB).
+  const out = execFileSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], {
+    cwd: root,
+    encoding: "buffer",
+    maxBuffer: 256 * 1024 * 1024,
+  });
 
   // -z output is NUL-separated; split manually so paths with any byte survive.
   const paths = [];
@@ -24,6 +31,8 @@ export function scanRepo(root) {
     }
   }
   paths.sort();
+  // A path can be listed twice (e.g. staged with unmerged entries); keep one.
+  for (let i = paths.length - 1; i > 0; i--) if (paths[i] === paths[i - 1]) paths.splice(i, 1);
 
   const files = [];
   for (const p of paths) {

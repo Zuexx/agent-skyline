@@ -26,6 +26,10 @@ cd .. && node server/server.mjs --repo D:/path/to/repo  # 啟動伺服器
 
 選項:`--port <n>`、`--no-watch`(關閉檔案監看)。
 
+### 可以監看哪些資料夾
+
+任何 **git repo** 都可以,不一定是程式碼:筆記、文件、寫作專案、資料檔都行。每個檔案是一棟大樓,高度是行數(二進位檔是平的)。被 `.gitignore` 排除的檔案不顯示;新建的檔案不用 `git add` 就會出現。還不是 repo 的資料夾,只要 `git init` 一次就好(不需要 commit)。檔案清單、分支比較、未 commit 的 diff 和歷史都靠 git;依賴道路只支援 JS/TS 和 C#。
+
 ## 接上 agent
 
 ### Claude Code
