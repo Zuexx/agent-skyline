@@ -19,6 +19,12 @@ export function resolveLogFile() {
   return envValue("CODECITY_EVENTS") ?? defaultLogFile;
 }
 
+// Where auto-started servers record their PIDs (so they can be stopped by PID, never by name).
+// CODECITY_SERVERS overrides it.
+export function resolveServersDir() {
+  return envValue("CODECITY_SERVERS") ?? path.join(dataDir, "servers");
+}
+
 // CODECITY_ZONES overrides the default zones config location.
 export function resolveZonesFile() {
   return envValue("CODECITY_ZONES") ?? defaultZonesFile;

@@ -303,6 +303,11 @@ export function createServer({ repo, logFile, zonesFile, scopeFile = null, webRo
         else json(res, 200, await getCity(q("rescan") === "1"));
         return;
       }
+      if (p === "/api/health" && req.method === "GET") {
+        // Lets the session-start hook tell "a CodeCity for this repo" from anything else on the port.
+        json(res, 200, { app: "codecity", repoPath, pid: process.pid });
+        return;
+      }
       if (p === "/api/working" && req.method === "GET") {
         json(res, 200, { files: workingChanges(repo) });
         return;
