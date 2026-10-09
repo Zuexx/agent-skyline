@@ -8,7 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { scanRepo } from "./scan.mjs";
 import { layout } from "./layout.mjs";
-import { churn, diffFiles, fileDiff, listBranches, refReader, treeFiles } from "./git.mjs";
+import { churn, diffFiles, fileDiff, listBranches, refReader, treeFiles, workingChanges, workingFileDiff } from "./git.mjs";
 import { tailJsonl } from "./tail.mjs";
 import { loadZones } from "../lib/zones.mjs";
 import { resolveLogFile, resolveZonesFile } from "../lib/paths.mjs";
@@ -301,6 +301,14 @@ export function createServer({ repo, logFile, zonesFile, scopeFile = null, webRo
       if (p === "/api/city" && (req.method === "GET" || req.method === "HEAD")) {
         if (q("ref")) json(res, 200, getRefCity(q("ref"), q("base")));
         else json(res, 200, await getCity(q("rescan") === "1"));
+        return;
+      }
+      if (p === "/api/working" && req.method === "GET") {
+        json(res, 200, { files: workingChanges(repo) });
+        return;
+      }
+      if (p === "/api/working/file" && req.method === "GET") {
+        json(res, 200, workingFileDiff(repo, q("path")));
         return;
       }
       if (p === "/api/churn" && req.method === "GET") {

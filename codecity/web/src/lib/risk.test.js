@@ -50,6 +50,19 @@ describe("reviewItems", () => {
     expect(reviewItems({ diff, files: { "b.ts": { writes: 1 } } })).toEqual([{ path: "a.ts", status: "M", added: 1, removed: 2 }]);
   });
 
+  it("merges uncommitted changes with this session's writes", () => {
+    const working = new Map([
+      ["a.ts", { path: "a.ts", status: "M", added: 3, removed: 1 }],
+      ["mine.md", { path: "mine.md", status: "A", added: 5, removed: 0 }],
+    ]);
+    const files = { "a.ts": { writes: 2 }, "done.ts": { writes: 1 } };
+    expect(reviewItems({ files, working })).toEqual([
+      { path: "a.ts", status: "M", added: 3, removed: 1, writes: 2 },
+      { path: "mine.md", status: "A", added: 5, removed: 0 },
+      { path: "done.ts", writes: 1 },
+    ]);
+  });
+
   it("takes written or blocked files otherwise", () => {
     const files = { "a.ts": { reads: 3, writes: 0, blocked: 0 }, "b.ts": { writes: 2 }, "c.ts": { writes: 0, blocked: 1 } };
     expect(reviewItems({ files }).map((i) => i.path)).toEqual(["b.ts", "c.ts"]);

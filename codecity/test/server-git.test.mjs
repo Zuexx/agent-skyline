@@ -76,6 +76,25 @@ test("churn counts recent commits per file on HEAD", async (t) => {
   assert.deepEqual(c.body, { days: 90, commits: { "gone.md": 1, "keep.txt": 1 } });
 });
 
+test("uncommitted changes against HEAD, with a diff per file", async (t) => {
+  const base = await start(t);
+  const dir = (await get(`${base}/api/city`)).body.repoPath;
+  await writeFile(path.join(dir, "keep.txt"), "k\nmore\n"); // modified
+  await unlink(path.join(dir, "gone.md")); // deleted
+  await writeFile(path.join(dir, "fresh.ts"), "x\ny\n"); // untracked
+
+  const w = await get(`${base}/api/working`);
+  assert.deepEqual(
+    w.body.files.map((f) => [f.path, f.status, f.added, f.removed]),
+    [["fresh.ts", "A", 2, 0], ["gone.md", "D", 0, 1], ["keep.txt", "M", 1, 0]]
+  );
+  assert.match((await get(`${base}/api/working/file?path=keep.txt`)).body.text, /^\+more$/m);
+  assert.match((await get(`${base}/api/working/file?path=fresh.ts`)).body.text, /@@ -0,0 \+1,2 @@\n\+x\n\+y/);
+  // Only changed paths are served: no reading arbitrary files through this endpoint.
+  assert.equal((await get(`${base}/api/working/file?path=../secret`)).status, 404);
+  assert.equal((await get(`${base}/api/working/file?path=new.ts`)).status, 404);
+});
+
 test("refs that could be read as git options are rejected with 400", async (t) => {
   const base = await start(t);
   for (const url of [

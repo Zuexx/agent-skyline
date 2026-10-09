@@ -6,6 +6,8 @@
 // always run with execFileSync (no shell) and refs placed after options.
 
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
 const MAX_COUNTED_BYTES = 2 * 1024 * 1024; // same limits as scan.mjs
 const BINARY_PROBE_BYTES = 8000;
@@ -167,6 +169,87 @@ export function churn(root, days = 90, maxCommits = 3000) {
     if (p) commits[p] = (commits[p] ?? 0) + 1;
   }
   return { days, commits };
+}
+
+const hasHead = (root) => {
+  try {
+    git(root, ["rev-parse", "--verify", "--quiet", "HEAD"], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const untracked = (root) =>
+  git(root, ["ls-files", "--others", "--exclude-standard", "-z"], { encoding: "utf8" }).split("\0").filter(Boolean);
+
+/**
+ * Uncommitted changes in the working tree against HEAD (staged or not), plus untracked files:
+ * [{ path, status: "A"|"M"|"D"|"R", added, removed, oldPath? }]. This is what an agent has
+ * changed and nobody has committed yet: the live counterpart of diffFiles.
+ */
+export function workingChanges(root) {
+  const files = new Map();
+  if (hasHead(root)) {
+    const status = git(root, ["diff", "HEAD", "--name-status", "-z", "-M", "--"], { encoding: "utf8" }).split("\0");
+    for (let i = 0; i < status.length; ) {
+      const code = status[i++];
+      if (!code) continue;
+      if (code[0] === "R" || code[0] === "C") {
+        const oldPath = status[i++];
+        const p = status[i++];
+        files.set(p, { path: p, status: "R", oldPath, added: 0, removed: 0 });
+      } else {
+        const p = status[i++];
+        files.set(p, { path: p, status: code[0] === "A" || code[0] === "D" ? code[0] : "M", added: 0, removed: 0 });
+      }
+    }
+    const num = git(root, ["diff", "HEAD", "--numstat", "-z", "-M", "--"], { encoding: "utf8" }).split("\0");
+    for (let i = 0; i < num.length; ) {
+      const rec = num[i++];
+      if (!rec) continue;
+      const [a, r, p] = rec.split("\t");
+      const p2 = p === "" ? (i++, num[i++]) : p;
+      const f = files.get(p2);
+      if (f) {
+        f.added = a === "-" ? 0 : Number(a);
+        f.removed = r === "-" ? 0 : Number(r);
+      }
+    }
+  }
+  for (const p of untracked(root)) {
+    if (files.has(p)) continue;
+    let added = 0;
+    try {
+      added = countLines(readFileSync(path.join(root, ...p.split("/"))));
+    } catch {
+      continue; // vanished between the listing and the read
+    }
+    files.set(p, { path: p, status: "A", added, removed: 0 });
+  }
+  return [...files.values()].sort((x, y) => (x.path < y.path ? -1 : 1));
+}
+
+/**
+ * Unified diff of one file's uncommitted change against HEAD. An untracked file is shown as
+ * all-added. Only paths that are actually changed are accepted, so the query cannot name
+ * arbitrary files.
+ */
+export function workingFileDiff(root, p) {
+  const change = typeof p === "string" ? workingChanges(root).find((c) => c.path === p) : null;
+  if (!change) throw Object.assign(new Error("no uncommitted change for this path"), { status: 404 });
+  let out;
+  if (change.status === "A" && untracked(root).includes(p)) {
+    const buf = readFileSync(path.join(root, ...p.split("/")));
+    const binary = buf.subarray(0, Math.min(BINARY_PROBE_BYTES, buf.length)).includes(0);
+    const lines = binary ? [] : buf.toString("utf8").replace(/\n$/, "").split("\n");
+    const header = `--- /dev/null\n+++ b/${p}\n`;
+    out = Buffer.from(binary ? `${header}(binary file)\n` : `${header}@@ -0,0 +1,${lines.length} @@\n${lines.map((l) => "+" + l).join("\n")}\n`);
+  } else {
+    out = git(root, ["diff", "HEAD", "-M", "--no-color", "--", ...(change.oldPath ? [change.oldPath, p] : [p])], { encoding: "buffer" });
+  }
+  const truncated = out.length > MAX_FILE_DIFF_BYTES;
+  return { text: out.subarray(0, MAX_FILE_DIFF_BYTES).toString("utf8"), truncated };
 }
 
 /** Unified diff of one file on `head` since `base` (three-dot), capped in size. */

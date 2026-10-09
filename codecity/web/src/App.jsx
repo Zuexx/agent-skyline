@@ -36,6 +36,8 @@ import { pathIndex, pathsInCommand } from "./lib/commandPaths.js";
 import { vscodeUrl } from "./lib/editor.js";
 import { depsOf, useDeps } from "./lib/deps.js";
 import { rankReview, reviewItems } from "./lib/risk.js";
+import { fetchWorkingDiff, useWorking } from "./lib/useWorking.js";
+import { fetchFileDiff } from "./lib/useCompare.js";
 import ReviewPanel from "./ui/ReviewPanel.jsx";
 import TaskPanel from "./ui/TaskPanel.jsx";
 import { pathsInRect, rectFrom, toggleAll } from "./lib/selection.js";
@@ -281,6 +283,34 @@ export default function App() {
   );
   const alerts = useMemo(() => alertsFrom(liveActivity.feed, liveWarnings), [liveActivity.feed, liveWarnings]);
 
+  // Uncommitted changes in the working tree, refreshed after every write the agents report.
+  const writeCount = useMemo(() => liveActivity.feed.filter((ev) => ev.kind === "write").length, [liveActivity.feed]);
+  const working = useWorking(writeCount);
+
+  // What the detail panel's diff shows: the compared branch's change to the selected file, or its
+  // uncommitted change. Memoized so a re-render does not refetch a diff that is still loading.
+  const workingChange = !compare.active && selectedPath ? (working?.get(selectedPath) ?? null) : null;
+  const diffSource = useMemo(() => {
+    if (!selectedPath) return null;
+    if (compare.active) {
+      return {
+        key: `${compare.base}...${compare.head}`,
+        label: t("detail.diff", { base: compare.base }),
+        change: compare.diff?.get(selectedPath) ?? null,
+        load: () => fetchFileDiff(compare.base, compare.head, selectedPath),
+        emptyText: t("detail.unchanged"),
+      };
+    }
+    if (!workingChange) return null;
+    return {
+      key: `working:${workingChange.status}:${workingChange.added}:${workingChange.removed}`,
+      label: t("detail.working"),
+      change: workingChange,
+      load: () => fetchWorkingDiff(selectedPath),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPath, compare.active, compare.base, compare.head, compare.diff, workingChange, prefs.locale]);
+
   // Review list: the compared branch's changes, or this session's writes, riskiest first.
   const [reviewOpen, setReviewOpen] = useState(false);
   const [churn, setChurn] = useState(null);
@@ -293,9 +323,9 @@ export default function App() {
   const ranked = useMemo(() => {
     const warned = new Set(warnPaths);
     for (const [p, f] of Object.entries(activity.files)) if (f.blocked > 0) warned.add(p);
-    const items = reviewItems({ diff: compare.active ? compare.diff : null, files: activity.files });
+    const items = reviewItems({ diff: compare.active ? compare.diff : null, files: activity.files, working });
     return rankReview(items, { churn, deps: depIndex, warned: compare.active ? new Set() : warned });
-  }, [compare.active, compare.diff, activity.files, churn, depIndex, warnPaths]);
+  }, [compare.active, compare.diff, activity.files, churn, depIndex, warnPaths, working]);
   const agentName = (a) => {
     if (a.source === "watcher") return t("source.watcher");
     const name = t(`source.${a.source}`);
@@ -565,8 +595,7 @@ export default function App() {
           building={selectedBuilding}
           districtPath={districtPathFor(selectedBuilding, city.districts)}
           fileActivity={activity.files[selectedBuilding.path]}
-          compare={compare}
-          change={compare.diff?.get(selectedBuilding.path) ?? null}
+          diffSource={diffSource}
           openUrl={liveIndex.has(selectedBuilding.path) ? vscodeUrl(liveCity.repoPath, selectedBuilding.path) : null}
           deps={selectedDeps}
           onFocusPath={(p) => focusOn(indexByPath.get(p))}

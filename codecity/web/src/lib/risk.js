@@ -54,10 +54,19 @@ export function rankReview(items, ctx = {}) {
   return ranked.sort((a, b) => b.score - a.score || (a.path < b.path ? -1 : 1));
 }
 
-/** Changed files to review: the compared branch's diff, or what was written this session. */
-export function reviewItems({ diff, files }) {
-  if (diff) return [...diff.values()].map((f) => ({ path: f.path, status: f.status, added: f.added, removed: f.removed }));
-  return Object.entries(files ?? {})
-    .filter(([, f]) => f.writes > 0 || f.blocked > 0)
-    .map(([path, f]) => ({ path, writes: f.writes }));
+/**
+ * Changed files to review: the compared branch's diff; otherwise everything uncommitted in the
+ * working tree (`working`, Map path -> change, with real line counts) together with what was
+ * written or blocked this session (a write may already be committed, a block changed nothing).
+ */
+export function reviewItems({ diff, files, working = null }) {
+  const asItem = (f) => ({ path: f.path, status: f.status, added: f.added, removed: f.removed });
+  if (diff) return [...diff.values()].map(asItem);
+  const items = new Map();
+  for (const f of working?.values() ?? []) items.set(f.path, asItem(f));
+  for (const [path, f] of Object.entries(files ?? {})) {
+    if (!(f.writes > 0 || f.blocked > 0)) continue;
+    items.set(path, { ...(items.get(path) ?? { path }), writes: f.writes });
+  }
+  return [...items.values()];
 }

@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { theme } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { formatClock } from "../lib/activity.js";
-import { fetchFileDiff } from "../lib/useCompare.js";
 
 const Row = ({ label, children }) => (
   <div style={{ marginTop: 10 }}>
@@ -13,26 +12,29 @@ const Row = ({ label, children }) => (
 
 const statusColor = (s) => ({ A: theme.added, D: theme.deleted }[s] ?? theme.written);
 
-// Right-side inspector for the selected building: file facts, live activity, and — while a
-// branch is being compared — what that branch did to the file, with the diff on demand.
-export default function DetailPanel({ building, districtPath, fileActivity, compare, change, openUrl = null, deps = null, onFocusPath }) {
+// Right-side inspector for the selected building: file facts, dependencies, live activity, and
+// a diff on demand. `diffSource` = { key, label, change, load(), emptyText? } — what the compared
+// branch did to the file, or its uncommitted change in the working tree — or null for none.
+export default function DetailPanel({ building, districtPath, fileActivity, diffSource = null, openUrl = null, deps = null, onFocusPath }) {
   const [diffOpen, setDiffOpen] = useState(false);
   const [diff, setDiff] = useState(null);
   const [diffError, setDiffError] = useState(null);
+  const change = diffSource?.change ?? null;
 
-  // A new file or a new comparison closes the previous diff.
+  // A new file, a new comparison or a new write closes or refreshes the previous diff.
   useEffect(() => {
-    setDiffOpen(false);
     setDiff(null);
     setDiffError(null);
-  }, [building?.path, compare?.head, compare?.base]);
+  }, [building?.path, diffSource?.key]);
+  useEffect(() => setDiffOpen(false), [building?.path]);
 
   useEffect(() => {
-    if (!diffOpen || diff || !change || !compare?.head) return;
-    fetchFileDiff(compare.base, compare.head, building.path)
+    if (!diffOpen || diff || !change) return;
+    diffSource
+      .load()
       .then(setDiff)
       .catch((e) => setDiffError(e.message));
-  }, [diffOpen, diff, change, compare, building]);
+  }, [diffOpen, diff, change, diffSource]);
 
   if (!building) return null;
   const a = fileActivity;
@@ -91,11 +93,9 @@ export default function DetailPanel({ building, districtPath, fileActivity, comp
         </div>
       )}
 
-      {compare?.active && (
+      {diffSource && (change || diffSource.emptyText) && (
         <div style={{ marginTop: 14, paddingTop: 10, borderTop: `1px solid ${theme.panelBorder}` }}>
-          <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, color: theme.muted }}>
-            {t("detail.diff", { base: compare.base })}
-          </div>
+          <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, color: theme.muted }}>{diffSource.label}</div>
           {change ? (
             <>
               <div style={{ marginTop: 4, display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
@@ -127,7 +127,7 @@ export default function DetailPanel({ building, districtPath, fileActivity, comp
               {diffOpen && <DiffView diff={diff} error={diffError} />}
             </>
           ) : (
-            <div style={{ marginTop: 4, fontSize: 13, color: theme.muted }}>{t("detail.unchanged")}</div>
+            <div style={{ marginTop: 4, fontSize: 13, color: theme.muted }}>{diffSource.emptyText}</div>
           )}
         </div>
       )}
