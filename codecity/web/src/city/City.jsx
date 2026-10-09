@@ -26,6 +26,7 @@ export default function City({
   onToggleDistrict,
   warnPaths = null,
   roads = null,
+  picked = null,
 }) {
   const districtDepthByPath = useMemo(
     () => Object.fromEntries((city.districts ?? []).map((d) => [d.path, d.depth])),
@@ -76,6 +77,7 @@ export default function City({
       />
       <LockCaps buildings={city.buildings ?? []} roofs={roofs} locked={locked} />
       {warnPaths?.size > 0 && <LockCaps buildings={city.buildings ?? []} roofs={roofs} paths={warnPaths} color={theme.warn} lift={0.14} />}
+      {picked?.size > 0 && <LockCaps buildings={city.buildings ?? []} roofs={roofs} paths={picked} color={theme.read} lift={0.28} thick={0.5} />}
       <Buildings
         buildings={city.buildings ?? []}
         districtDepthByPath={districtDepthByPath}

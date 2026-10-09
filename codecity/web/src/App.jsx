@@ -37,6 +37,8 @@ import { vscodeUrl } from "./lib/editor.js";
 import { depsOf, useDeps } from "./lib/deps.js";
 import { rankReview, reviewItems } from "./lib/risk.js";
 import ReviewPanel from "./ui/ReviewPanel.jsx";
+import TaskPanel from "./ui/TaskPanel.jsx";
+import { pathsInRect, rectFrom, toggleAll } from "./lib/selection.js";
 
 // Isometric view direction: camera sits on the (1, 1, 1) ray above the origin.
 const ISO = new THREE.Vector3(1, 1, 1).normalize();
@@ -80,6 +82,28 @@ function FitCamera({ width, depth, nonce }) {
     camera.updateProjectionMatrix();
   }, [camera, controls, width, depth, nonce, size.width, size.height]);
 
+  return null;
+}
+
+/**
+ * Select mode support inside the canvas: frees the left mouse button from panning (right-drag
+ * rotation and wheel zoom keep working), and publishes a world -> screen projection for the box
+ * selection drawn over the canvas.
+ */
+function PickSupport({ enabled, projRef }) {
+  const camera = useThree((s) => s.camera);
+  const controls = useThree((s) => s.controls);
+  const size = useThree((s) => s.size);
+  const v = useMemo(() => new THREE.Vector3(), []);
+  useEffect(() => {
+    if (!controls?.mouseButtons) return;
+    controls.mouseButtons = { ...controls.mouseButtons, LEFT: enabled ? null : THREE.MOUSE.PAN };
+  }, [controls, enabled]);
+  projRef.current = (p) => {
+    v.set(p[0], p[1], p[2]).project(camera);
+    if (v.z < -1 || v.z > 1) return null;
+    return { x: ((v.x + 1) / 2) * size.width, y: ((1 - v.y) / 2) * size.height };
+  };
   return null;
 }
 
@@ -148,6 +172,13 @@ export default function App() {
   // Follow mode: the camera glides to wherever the latest event happened. Off by default, so the
   // page opens on the whole city.
   const [follow, setFollow] = useState(false);
+  // Select mode: drag a box (or click buildings) to pick files, then turn them into a task.
+  const [pickMode, setPickMode] = useState(false);
+  const [picked, setPicked] = useState(() => new Set());
+  const [drag, setDrag] = useState(null); // { start, end } in client pixels while box-selecting
+  const dragRef = useRef(null);
+  const projRef = useRef(null);
+  const justDragged = useRef(false); // the click that ends a box drag must not toggle a building
   // Bumped to re-frame the whole city (view switch, the overview button).
   const [fitNonce, setFitNonce] = useState(0);
   // One-off camera flight + ring (feed click, double-click on a building).
@@ -166,6 +197,9 @@ export default function App() {
         setSelected(null);
         setZoneMode(false);
         setScopeMode(false);
+        setPickMode(false);
+        dragRef.current = null;
+        setDrag(null);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -300,6 +334,37 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activity.feed, view, indexByPath]);
 
+  // Screen point of a building's middle, for the box selection (null when behind the camera).
+  const screenOfPath = (p) => {
+    const i = indexByPath.get(p);
+    if (i == null || !projRef.current) return null;
+    const { position } = buildingTransform(view.buildings[i], {}, HEIGHT_SCALE);
+    return projRef.current([position[0] - view.width / 2, position[1], position[2] - view.depth / 2]);
+  };
+  // The drag lives in a ref (events can outrun renders); the state copy only draws the box.
+  const boxDown = (e) => {
+    if (!pickMode || e.button !== 0 || e.target.tagName !== "CANVAS") return;
+    dragRef.current = { start: { x: e.clientX, y: e.clientY }, end: { x: e.clientX, y: e.clientY } };
+    setDrag(dragRef.current);
+  };
+  const boxMove = (e) => {
+    if (!dragRef.current) return;
+    dragRef.current = { ...dragRef.current, end: { x: e.clientX, y: e.clientY } };
+    setDrag(dragRef.current);
+  };
+  const boxUp = (e) => {
+    const d = dragRef.current;
+    if (!d) return;
+    dragRef.current = null;
+    setDrag(null);
+    const rect = rectFrom(d.start, { x: e.clientX, y: e.clientY });
+    if (rect.right - rect.left < 6 && rect.bottom - rect.top < 6) return; // a click, not a box
+    justDragged.current = true;
+    setTimeout(() => (justDragged.current = false), 80);
+    const hits = pathsInRect(view.buildings.map((b) => b.path), screenOfPath, rect);
+    setPicked((s) => toggleAll(s, hits));
+  };
+
   const focusOn = (i) => {
     if (i == null || !view) return;
     setSelected(i);
@@ -317,12 +382,16 @@ export default function App() {
       style={{
         position: "fixed",
         inset: 0,
-        cursor: zoneMode || scopeMode ? "crosshair" : "auto",
+        cursor: zoneMode || scopeMode || pickMode ? "crosshair" : "auto",
+        userSelect: drag ? "none" : "auto",
         background: theme.background,
         // Native widgets (scrollbars, selects) follow the theme instead of the OS default.
         colorScheme: theme.bloom ? "dark" : "light",
         scrollbarColor: `${theme.panelBorder} transparent`,
       }}
+      onPointerDown={boxDown}
+      onPointerMove={boxMove}
+      onPointerUp={boxUp}
     >
       {/* Keyed by theme: materials are created with the palette's colors, so a theme switch rebuilds the scene. */}
       <Canvas key={theme.name} flat onPointerMissed={() => setSelected(null)}>
@@ -333,6 +402,7 @@ export default function App() {
         {/* Pan + zoom; rotation clamped above ground. Grabbing the map turns follow mode off. */}
         <MapControls makeDefault maxPolarAngle={Math.PI / 2 - 0.05} onStart={() => setFollow(false)} />
         <CameraFollow target={latestTarget} enabled={follow} focus={focus} />
+        <PickSupport enabled={pickMode} projRef={projRef} />
         <FitCamera width={view.width} depth={view.depth} nonce={fitNonce} />
         {DEMO && (
           <DemoBridge
@@ -352,9 +422,10 @@ export default function App() {
             const district = districtPathFor(city.buildings[i], city.districts);
             if (zoneMode) zones.toggleDistrict(district);
             else if (scopeMode) scope.toggleDistrict(district);
+            else if (pickMode) !justDragged.current && setPicked((s) => toggleAll(s, [city.buildings[i].path]));
             else setSelected(i);
           }}
-          onFocus={(i) => !zoneMode && !scopeMode && focusOn(i)}
+          onFocus={(i) => !zoneMode && !scopeMode && !pickMode && focusOn(i)}
           activity={activity}
           diff={compare.active ? compare.diff : null}
           ping={focus}
@@ -364,6 +435,7 @@ export default function App() {
           onToggleDistrict={zoneMode ? zones.toggleDistrict : scope.toggleDistrict}
           warnPaths={compare.active ? null : warnPaths}
           roads={selectedDeps ? { path: selectedPath, deps: selectedDeps } : null}
+          picked={picked}
         />
         {/* Night only: colors pushed above 1.0 (active buildings, pulses, agents) cross the threshold. */}
         {theme.bloom && (
@@ -397,6 +469,7 @@ export default function App() {
           compare.setHead(null); // zones apply to the working tree, not to another branch
           setViewId("folder");
           setScopeMode(false);
+          setPickMode(false);
           setZoneMode((z) => !z);
           setSelected(null);
         }}
@@ -405,6 +478,7 @@ export default function App() {
           compare.setHead(null);
           setViewId("folder");
           setZoneMode(false);
+          setPickMode(false);
           setScopeMode((s) => !s);
           setSelected(null);
         }}
@@ -423,13 +497,27 @@ export default function App() {
         onTheme={setTheme}
         locale={prefs.locale}
         onLocale={setLocalePref}
+        pickMode={pickMode}
+        pickCount={picked.size}
+        onTogglePickMode={() => {
+          setZoneMode(false);
+          setScopeMode(false);
+          setSelected(null);
+          setPickMode((m) => !m);
+        }}
         reviewOpen={reviewOpen}
         reviewCount={ranked.length}
         onToggleReview={() => setReviewOpen((o) => !o)}
       />
       {zoneMode && <ZoneBanner locked={zones.locked} onUnlockDistrict={zones.toggleDistrict} onDone={() => setZoneMode(false)} />}
       {scopeMode && (
-        <ScopeBanner allow={scope.allow} onRemoveDistrict={scope.toggleDistrict} onClear={scope.clear} onDone={() => setScopeMode(false)} />
+        <ScopeBanner
+          allow={scope.allow}
+          onRemoveDistrict={scope.toggleDistrict}
+          onRemoveGlob={(g) => scope.set(scope.allow.filter((x) => x !== g))}
+          onClear={scope.clear}
+          onDone={() => setScopeMode(false)}
+        />
       )}
       <Toasts toasts={toasts} describe={describeAlert} onDismiss={dismiss} onOpen={(a) => a.path && focusOn(indexByPath.get(a.path))} />
       <CompareSummary compare={compare} onClose={() => compare.setHead(null)} />
@@ -445,7 +533,34 @@ export default function App() {
       ) : (
         <Feed feed={activity.feed} agentSeq={activity.agentSeq} warnings={warnings} onFocusPath={(p) => focusOn(indexByPath.get(p))} />
       )}
-      {selectedBuilding && (
+      {drag && (
+        <div
+          style={{
+            position: "fixed",
+            zIndex: 90,
+            pointerEvents: "none",
+            left: Math.min(drag.start.x, drag.end.x),
+            top: Math.min(drag.start.y, drag.end.y),
+            width: Math.abs(drag.end.x - drag.start.x),
+            height: Math.abs(drag.end.y - drag.start.y),
+            border: `1px dashed ${theme.read}`,
+            background: `${theme.read}22`,
+          }}
+        />
+      )}
+      {picked.size > 0 && (
+        <TaskPanel
+          paths={[...picked]}
+          onRemove={(p) => setPicked((s) => toggleAll(s, [p]))}
+          onClear={() => {
+            setPicked(new Set());
+            setPickMode(false);
+          }}
+          onSetScope={(paths) => scope.set(paths)}
+          onFocusPath={(p) => focusOn(indexByPath.get(p))}
+        />
+      )}
+      {selectedBuilding && picked.size === 0 && (
         <DetailPanel
           building={selectedBuilding}
           districtPath={districtPathFor(selectedBuilding, city.districts)}

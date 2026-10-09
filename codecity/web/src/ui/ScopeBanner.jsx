@@ -3,7 +3,7 @@ import { t } from "../lib/i18n.js";
 
 // Shown while declaring the task scope: what clicking does, what a scope means (warn, not
 // block), how it is inferred when nothing is declared, and the current list with one-click removal.
-export default function ScopeBanner({ allow, onRemoveDistrict, onClear, onDone }) {
+export default function ScopeBanner({ allow, onRemoveDistrict, onRemoveGlob, onClear, onDone }) {
   const accent = theme.added;
   return (
     <div
@@ -51,9 +51,9 @@ export default function ScopeBanner({ allow, onRemoveDistrict, onClear, onDone }
               }}
             >
               {g}
-              {district && (
+              {(district || onRemoveGlob) && (
                 <button
-                  onClick={() => onRemoveDistrict(district)}
+                  onClick={() => (district ? onRemoveDistrict(district) : onRemoveGlob(g))}
                   style={{ border: "none", background: "none", color: theme.text, cursor: "pointer", fontSize: 13, padding: "0 4px" }}
                 >
                   ×

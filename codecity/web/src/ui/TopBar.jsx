@@ -110,6 +110,9 @@ export default function TopBar({
   onTheme,
   locale,
   onLocale,
+  pickMode = false,
+  pickCount = 0,
+  onTogglePickMode,
   reviewOpen = false,
   reviewCount = 0,
   onToggleReview,
@@ -218,6 +221,7 @@ export default function TopBar({
           )}
         </span>
         <Divider />
+        <IconButton icon="select" on={pickMode} badge={pickCount} label={t("top.pickTip")} onClick={onTogglePickMode} />
         <IconButton icon="review" on={reviewOpen} badge={reviewCount} label={t("top.reviewTip")} onClick={onToggleReview} />
         <Divider />
         <IconButton icon="map" label={t("top.fitHint")} onClick={onFit} />

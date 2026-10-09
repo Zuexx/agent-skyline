@@ -45,5 +45,5 @@ export function useScope(url = "/api/scope") {
     [save]
   );
 
-  return { allow, error, toggleDistrict, clear: () => save([]) };
+  return { allow, error, toggleDistrict, set: save, clear: () => save([]) };
 }

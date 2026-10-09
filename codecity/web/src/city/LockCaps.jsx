@@ -10,7 +10,7 @@ const CAP = 0.12;
 // - default: red caps on every building inside a locked zone (`locked` globs);
 // - with `paths` and `color`: caps on exactly those buildings (scope warnings use yellow), raised
 //   by `lift` so they sit on top of a lock cap instead of inside it.
-export default function LockCaps({ buildings, roofs, locked = [], paths = null, color = null, lift = 0 }) {
+export default function LockCaps({ buildings, roofs, locked = [], paths = null, color = null, lift = 0, thick = CAP }) {
   const ref = useRef(null);
   const dummy = useMemo(() => new THREE.Object3D(), []);
   const capped = useMemo(() => {
@@ -24,14 +24,14 @@ export default function LockCaps({ buildings, roofs, locked = [], paths = null, 
     if (!mesh) return;
     capped.forEach((p, i) => {
       const [x, y, z] = roofs.get(p);
-      dummy.position.set(x, y + lift + CAP / 2, z);
-      dummy.scale.set(0.9, CAP, 0.9);
+      dummy.position.set(x, y + lift + thick / 2, z);
+      dummy.scale.set(0.9, thick, 0.9);
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
     });
     mesh.count = capped.length;
     mesh.instanceMatrix.needsUpdate = true;
-  }, [capped, roofs, dummy, lift]);
+  }, [capped, roofs, dummy, lift, thick]);
 
   if (!capped.length) return null;
   return (
