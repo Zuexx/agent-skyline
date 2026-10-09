@@ -33,6 +33,7 @@ import { setLocale, t } from "./lib/i18n.js";
 import { buildingTransform, HEIGHT_SCALE } from "./lib/geometry.js";
 import { buildView } from "./lib/views.js";
 import { pathIndex, pathsInCommand } from "./lib/commandPaths.js";
+import { vscodeUrl } from "./lib/editor.js";
 
 // Isometric view direction: camera sits on the (1, 1, 1) ray above the origin.
 const ISO = new THREE.Vector3(1, 1, 1).normalize();
@@ -414,6 +415,7 @@ export default function App() {
           fileActivity={activity.files[selectedBuilding.path]}
           compare={compare}
           change={compare.diff?.get(selectedBuilding.path) ?? null}
+          openUrl={liveIndex.has(selectedBuilding.path) ? vscodeUrl(liveCity.repoPath, selectedBuilding.path) : null}
         />
       )}
     </div>

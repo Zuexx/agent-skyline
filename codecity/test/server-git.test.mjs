@@ -61,6 +61,14 @@ test("branch, diff and ref-city endpoints", async (t) => {
   assert.match(fd.body.text, /^\+b$/m);
 });
 
+test("the working-tree city carries the absolute repo path for editor links", async (t) => {
+  const base = await start(t);
+  const city = await get(`${base}/api/city`);
+  assert.match(city.body.repoPath, /codecity-srvgit-/);
+  assert.ok(!city.body.repoPath.includes("\\"));
+  assert.ok(path.isAbsolute(city.body.repoPath));
+});
+
 test("refs that could be read as git options are rejected with 400", async (t) => {
   const base = await start(t);
   for (const url of [

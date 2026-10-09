@@ -53,6 +53,7 @@ export default function Legend({ comparing = false }) {
         </div>
       ))}
       <div style={{ color: theme.muted, marginTop: 4 }}>{t("legend.footer")}</div>
+      <div style={{ color: theme.muted }}>{t("legend.controls")}</div>
     </div>
   );
 }

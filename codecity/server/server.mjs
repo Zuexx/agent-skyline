@@ -144,11 +144,13 @@ export function createServer({ repo, logFile, zonesFile, scopeFile = null, webRo
     }
   };
   let cityCache = null;
+  // Absolute, "/"-separated repo path, so the UI can build editor links (vscode://file/...).
+  const repoPath = path.resolve(repo).split(path.sep).join("/");
 
   async function getCity(forceRescan) {
     if (cityCache && !forceRescan) return cityCache;
     const scanned = scanRepo(repo); // throws if `repo` is not a git work tree -> 500 by the router
-    cityCache = { repo, ...layout(scanned.files) };
+    cityCache = { repo, repoPath, ...layout(scanned.files) };
     return cityCache;
   }
 

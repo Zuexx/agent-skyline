@@ -15,7 +15,7 @@ const statusColor = (s) => ({ A: theme.added, D: theme.deleted }[s] ?? theme.wri
 
 // Right-side inspector for the selected building: file facts, live activity, and — while a
 // branch is being compared — what that branch did to the file, with the diff on demand.
-export default function DetailPanel({ building, districtPath, fileActivity, compare, change }) {
+export default function DetailPanel({ building, districtPath, fileActivity, compare, change, openUrl = null }) {
   const [diffOpen, setDiffOpen] = useState(false);
   const [diff, setDiff] = useState(null);
   const [diffError, setDiffError] = useState(null);
@@ -60,6 +60,26 @@ export default function DetailPanel({ building, districtPath, fileActivity, comp
       }}
     >
       <Row label={t("detail.path")}>{building.path}</Row>
+      {/* The working-tree copy; a file that exists only on a compared branch has nothing to open. */}
+      {openUrl && (
+        <a
+          href={openUrl}
+          title={t("detail.openHint")}
+          style={{
+            display: "inline-block",
+            marginTop: 8,
+            fontSize: 12,
+            fontWeight: 600,
+            padding: "3px 10px",
+            borderRadius: 6,
+            border: `1px solid ${theme.read}`,
+            color: theme.read,
+            textDecoration: "none",
+          }}
+        >
+          {t("detail.open")}
+        </a>
+      )}
       <Row label={t("detail.lines")}>{String(building.lines ?? 0)}</Row>
       <Row label={t("detail.folder")}>{districtPath || t("detail.root")}</Row>
 
