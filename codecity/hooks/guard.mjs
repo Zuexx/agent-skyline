@@ -9,7 +9,7 @@ import { appendFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { normalize } from "../lib/normalize.mjs";
 import { resolveLogFile, resolveZonesFile } from "../lib/paths.mjs";
-import { loadZones, decide } from "../lib/zones.mjs";
+import { loadZones, decide, decideCommand } from "../lib/zones.mjs";
 
 async function readStdin() {
   let raw = "";
@@ -37,8 +37,14 @@ async function main() {
   }
   const event = normalize(payload, new Date(), process.env.CLAUDE_PROJECT_DIR);
   const zones = await loadZones(resolveZonesFile());
-  const decision = decide(event, zones);
+  // Shell commands can write too (`echo > file`, `sed -i`, `rm`...): an agent blocked on Edit was
+  // seen switching to exactly that. Check the full command, not the truncated event detail.
+  const command = event.kind === "exec" ? payload?.tool_input?.command : null;
+  const decision = command
+    ? decideCommand(command, payload.cwd, process.env.CLAUDE_PROJECT_DIR || payload.cwd, zones)
+    : decide(event, zones);
   if (decision.allow) return;
+  if (command) event.paths = decision.paths;
 
   // Deny: print exactly one JSON object to stdout.
   process.stdout.write(

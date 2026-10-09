@@ -97,3 +97,18 @@ test("decide denies every write when the zones config is invalid (fail closed)",
   // Non-write events are unaffected by an invalid config.
   assert.deepEqual(decide({ kind: "read", paths: ["app/src/main.tsx"] }, zones), { allow: true });
 });
+
+test("decideCommand blocks shell writes into a locked zone, resolving cwd and Git Bash paths", async () => {
+  const { decideCommand, commandTargetsInRepo } = await import("../lib/zones.mjs");
+  const zones = { status: "ok", locked: ["locked/**", "api/Anvil/**"] };
+  const root = "D:\\Labs\\repo";
+  assert.equal(decideCommand("echo x > locked/secret.ts", root, root, zones).allow, false);
+  assert.equal(decideCommand("cd api && sed -i s/a/b/ Anvil/x.cs", root, root, zones).allow, false);
+  assert.equal(decideCommand("echo x > Anvil/x.cs", "D:\\Labs\\repo\\api", root, zones).allow, false); // session cwd in a subfolder
+  assert.equal(decideCommand("cp a.ts /d/Labs/repo/locked/a.ts", root, root, zones).allow, false);
+  assert.equal(decideCommand("cat locked/secret.ts", root, root, zones).allow, true); // reading is fine
+  assert.equal(decideCommand("echo x > src/a.ts", root, root, zones).allow, true);
+  assert.deepEqual(commandTargetsInRepo("echo x > /tmp/outside.txt", root, root), []);
+  const d = decideCommand("echo x > locked/secret.ts", root, root, zones);
+  assert.match(d.reason, /this command would modify locked\/secret\.ts/);
+});

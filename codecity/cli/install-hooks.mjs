@@ -17,7 +17,7 @@ const hook = (name) => `node "${path.join(here, "..", "hooks", name).replace(/\\
 const settings = {
   hooks: {
     PreToolUse: [
-      { matcher: "Edit|Write|MultiEdit|NotebookEdit", hooks: [{ type: "command", command: hook("guard.mjs"), timeout: 10 }] },
+      { matcher: "Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell", hooks: [{ type: "command", command: hook("guard.mjs"), timeout: 10 }] },
     ],
     PostToolUse: [{ matcher: "*", hooks: [{ type: "command", command: hook("log-event.mjs"), timeout: 10 }] }],
   },

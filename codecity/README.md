@@ -1,63 +1,96 @@
 # CodeCity
 
-把一個 git repo 畫成 3D 城市:資料夾是街區、檔案是大樓、大樓高度是行數。主要用途是**監督 AI coding agent**:
-即時看到它讀寫哪些檔案、在城市上劃禁區擋下寫入、比較分支看這次改了什麼。
+[繁體中文](README.zh-TW.md)
 
-- 構想與評估:`NOTES.md`
-- 開發過程、每個決定的理由、事故紀錄:`PROGRESS.md`
-- 每一步的規格:`specs/`
+CodeCity draws a git repository as a 3D city — folders are districts, files are buildings,
+building height is line count — and uses it to **supervise AI coding agents**:
 
-## 快速開始
+- see live which files an agent reads and writes;
+- lock folders so that writes into them are **blocked before they happen**;
+- compare a branch with `main` and see at a glance what changed, and whether tests came with it.
 
-需要 Node 22 以上和 git。
+It works with **Claude Code** (hooks) and **pi** (an extension). Anything else — other agents, or
+people — is still seen through a file watcher, just without knowing who made the change.
 
-```bash
-cd codecity/web && npm install && npm run build      # 建置畫面(只要做一次)
-cd .. && node server/server.mjs --repo D:/path/to/repo # 啟動伺服器
-```
+More context: `NOTES.md` (the idea and why it is shaped like this), `PROGRESS.md` (how it was
+built, every decision and the one incident), `specs/` (the step-by-step specs).
 
-打開 http://127.0.0.1:4477 。伺服器只綁 127.0.0.1。
+## Quick start
 
-選項:`--port <n>`、`--no-watch`(關閉檔案監看)。
-
-## 接上 Claude Code
+Requires Node 22+ and git.
 
 ```bash
-node cli/install-hooks.mjs D:/path/to/repo            # 印出要貼的設定
-node cli/install-hooks.mjs D:/path/to/repo --write    # 直接寫入 <repo>/.claude/settings.local.json
+cd codecity/web && npm install && npm run build       # build the UI once
+cd .. && node server/server.mjs --repo D:/path/to/repo  # start the server
 ```
 
-寫入前請確認目標 repo 的 `.gitignore` 有排除 `.claude/settings.local.json`。裝好後,在該 repo **新開**的
-Claude Code 工作階段才會載入 hook。要停止監看,刪掉那個檔案即可。
+Open http://127.0.0.1:4477. The server only listens on 127.0.0.1.
 
-- `hooks/log-event.mjs`(PostToolUse):每次工具呼叫記一行事件到 `data/events.jsonl`。
-- `hooks/guard.mjs`(PreToolUse):要寫入禁區時直接擋下。
+Options: `--port <n>`, `--no-watch` (turn off the file watcher).
 
-沒有 hook 的 agent(或人)改的檔案,由伺服器的檔案監看記錄,標示為「檔案監看」,不知道是誰改的、也擋不了。
+## Connect an agent
 
-## 畫面上能做的事
+### Claude Code
 
-| 功能 | 怎麼用 |
+```bash
+node cli/install-hooks.mjs D:/path/to/repo            # print the settings to paste
+node cli/install-hooks.mjs D:/path/to/repo --write    # write <repo>/.claude/settings.local.json
+```
+
+Make sure the target repo git-ignores `.claude/settings.local.json`. Only Claude Code sessions
+started **after** that pick up the hooks. Delete the file to stop.
+
+- `hooks/log-event.mjs` (PostToolUse) appends one event per tool call to `data/events.jsonl`.
+- `hooks/guard.mjs` (PreToolUse) blocks writes into locked zones — through Edit/Write **and**
+  through shell commands.
+
+### pi
+
+```bash
+pi --extension D:/path/to/codecity/adapters/pi/codecity.js     # one run
+```
+
+or import `adapters/pi/codecity.js` from a file in `~/.pi/agent/extensions/` to load it always.
+It logs pi's tool calls and blocks writes into locked zones (write, edit and bash), using the same
+rules as the Claude Code hooks. Events show up as "pi 1", "pi 2", …
+
+### Anything else
+
+The server watches the repo. Changes no agent reported appear as **File watcher** events:
+visible, but not attributed and not blockable. Git-ignored paths (`bin/`, `node_modules/`, …) are
+skipped, and a change an agent already reported is not logged twice.
+
+## Locked zones and shell commands
+
+A locked zone blocks writes; reading stays allowed. An agent blocked on Edit was observed retrying
+with `echo … > file`, so shell commands are checked too: redirections, `tee`, `sed -i`, `cp`, `mv`,
+`rm`, `touch`, `git checkout --`, and the PowerShell equivalents. Writes made inside an interpreter
+(`python -c …`, `node -e …`) or a script cannot be seen in advance; the file watcher records them
+afterwards.
+
+## In the UI
+
+| Feature | How |
 |---|---|
-| 分組方式 | 資料夾 / 角色(程式碼、測試、規格…)/ 本次動過 / 差異。切換時大樓會飛到新位置 |
-| 即時動態 | 左下角;可篩選、往回捲;點檔案讓鏡頭飛過去,點指令展開完整內容 |
-| 比較分支 | 選一個分支和 main 比較,依 git diff 上色;點大樓看 diff |
-| 禁區 | 鎖頭 icon → 點街區鎖定或解鎖;鎖定後 hook 會擋下寫入 |
-| 鏡頭 | 地圖 icon 回到全景;準星 icon 跟隨最新動作;雙擊大樓飛過去 |
-| 主題 / 語言 | 夜間、日間、跟隨系統;繁中、English |
+| Group by | Folders / Role (code, tests, specs, docs…) / This session / Diff. Buildings fly to their new places |
+| Activity | Bottom left; filter, scroll back; click a file to fly there, click a command to expand it |
+| Compare | Pick a branch to compare with main; the city is colored by git diff; click a building for its diff |
+| Locked zones | Lock icon → click districts to lock or unlock |
+| Camera | Map icon: whole city. Target icon: follow the latest action. Double-click a building to fly to it |
+| Theme / language | Night, day, or system; 繁中 or English |
 
-## 測試
+## Tests
 
 ```bash
-npm test              # 伺服器、hook、版面(node:test)
-cd web && npm test    # 前端純函式(vitest)
+npm test              # server, hooks, adapters, layout (node:test)
+cd web && npm test    # UI logic (vitest)
 ```
 
-## 不裝 hook 先看效果
+## Try it without an agent
 
 ```bash
 CODECITY_EVENTS=/tmp/sim/events.jsonl node server/server.mjs --repo D:/path/to/repo --port 4478
 node cli/simulate.mjs --repo D:/path/to/repo --file /tmp/sim/events.jsonl
 ```
 
-模擬器強制要求 `--file`,不會寫到真正的事件紀錄。
+The simulator requires `--file`, so it can never write into the real event log.

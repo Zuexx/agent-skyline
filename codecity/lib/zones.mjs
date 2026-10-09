@@ -2,7 +2,9 @@
 // loadZones does file I/O; decide is pure.
 
 import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { matchGlob } from "./glob.mjs";
+import { bashWriteTargets } from "./bashTargets.mjs";
 
 // Read the zones config. A missing file means "no zones defined" (allow);
 // an unreadable or malformed file is reported as invalid so callers can fail
@@ -60,4 +62,41 @@ export function decide(event, zones) {
   }
 
   return { allow: true };
+}
+
+// "/d/Labs/x" (Git Bash) and "D:\Labs\x" both become "d:/labs/x"-comparable "D:/Labs/x".
+function toPosixAbs(p) {
+  let s = String(p).replace(/\\/g, "/");
+  const m = /^\/([a-z])\/(.*)$/i.exec(s);
+  if (m) s = `${m[1]}:/${m[2]}`;
+  return path.posix.normalize(s);
+}
+
+/**
+ * Repo-relative paths a shell command would modify. `cwd` is where the command runs (it may be a
+ * subfolder of the repo), `root` the repo root. Targets outside the repo are dropped.
+ */
+export function commandTargetsInRepo(command, cwd, root) {
+  const base = toPosixAbs(cwd || root || ".");
+  let r = toPosixAbs(root || cwd || ".");
+  while (r.length > 1 && r.endsWith("/")) r = r.slice(0, -1);
+  const out = [];
+  for (const t of bashWriteTargets(command)) {
+    const abs = /^([a-z]:)?\//i.test(toPosixAbs(t)) && (t.startsWith("/") || /^[a-z]:/i.test(t)) ? toPosixAbs(t) : path.posix.join(base, t);
+    if (abs.toLowerCase() === r.toLowerCase()) continue;
+    if (abs.toLowerCase().startsWith(r.toLowerCase() + "/")) out.push(abs.slice(r.length + 1));
+  }
+  return [...new Set(out)];
+}
+
+/**
+ * Decision for a shell command: deny when anything it would modify is in a locked zone.
+ * Same result shape as decide(); `paths` lists every target found.
+ */
+export function decideCommand(command, cwd, root, zones) {
+  const paths = commandTargetsInRepo(command, cwd, root);
+  if (!paths.length) return { allow: true, paths };
+  const d = decide({ kind: "write", paths }, zones);
+  if (d.allow) return { allow: true, paths };
+  return { ...d, paths, reason: `codecity: this command would modify ${d.path}, which is in locked zone "${d.zone}"` };
 }

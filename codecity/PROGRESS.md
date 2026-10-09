@@ -81,6 +81,12 @@
     - 降噪:git 忽略的檔案(bin/、obj/、node_modules/)不記;資料夾本身的變動不記;agent 的 hook 已經回報的同一筆寫入,不重複記。實測在 forgekit 閒置時沒有誤報。
     - 第二步(pi 轉接器)還沒做。
 28. **工具列改版**:只把直觀的輔助功能改成 icon(全景、鏡頭跟隨、禁區附數字徽章、主題點擊輪換、語言用短字);「分組方式」和「比較分支」保留文字,因為沒有好懂的 icon,而且是主要操作。emoji 換成統一的線條 SVG(`ui/Icon.jsx`),隨主題變色。每個 icon 都有中英文滑鼠提示。工具列分左(狀態)、中(分組)、右(比較 + 工具)三區,一般寬度一行放得下。
+29. **pi 轉接器(`adapters/pi/codecity.js`)**:用 pi 的擴充 API 做出和 Claude hook 一樣的兩件事:`tool_call` 執行前檢查禁區(可以回傳 `{ block: true }` 擋下),`tool_execution_end` 執行後記錄事件。pi 的事件先轉成 Claude hook 的格式,再交給同一套 `normalize` 和禁區判斷,兩種 agent 用同一套規則。
+    - **實測發現的 bug**:pi 的 `tool_execution_end` 不帶參數,只有結果;參數要從 `tool_execution_start` 依 call id 記下來。被擋下的呼叫結束時是錯誤結果,不能記成寫入。
+    - **實測發現的安全缺口**:真正的 pi(qwen3.5-9b)被擋下 edit 之後,**改用 `echo … > locked/secret.ts` 寫進禁區,而且成功了**。Claude 也有一樣的缺口。補上 `lib/bashTargets.mjs`:辨識重新導向、`tee`、`sed -i`、`cp`、`mv`、`rm`、`touch`、`git checkout --` 和 PowerShell 的寫檔指令,目標在禁區就擋下。Claude 的 guard matcher 加上 `Bash|PowerShell`(已更新 forgekit 的設定和安裝範本)。直譯器內寫檔(`python -c`)仍然擋不到,由檔案監看事後記錄。
+    - **再次實測**:同一個 pi 改用 bash 寫禁區被擋下,檔案未被修改,事件正確記錄被擋的路徑。
+    - 實測用的是 9B 小模型(約 10GB,顯存剩 9GB,符合保留 4 到 6GB 的規則),在暫存目錄的拋棄式 repo 裡進行,不碰 forgekit;測完已卸載模型。
+30. **文件英文為主**:README 改成英文,另附 `README.zh-TW.md`。
 17. **測試範圍分開**:根目錄 `npm test` 只跑 `test/*.test.mjs`,不會誤抓 `web/` 的 vitest 檔;伺服器的靜態檔目錄改成可注入,測試不再依賴 `web/dist` 有沒有 build 過。
 
 ## ⚠️ 事故:pi 關掉了所有 Node 程序(步驟 3 Part C)

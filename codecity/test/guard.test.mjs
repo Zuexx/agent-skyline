@@ -116,3 +116,28 @@ test("Invalid stdin → exit 0, empty stdout", async (t) => {
   assert.equal(code, 0);
   assert.equal(stdout, "");
 });
+
+test("guard blocks a Bash command that writes into a locked zone", async () => {
+  const { spawnSync } = await import("node:child_process");
+  const os = await import("node:os");
+  const fs = await import("node:fs");
+  const pathMod = await import("node:path");
+  const dir = fs.mkdtempSync(pathMod.join(os.tmpdir(), "codecity-guard-bash-"));
+  try {
+    const zones = pathMod.join(dir, "zones.json");
+    fs.writeFileSync(zones, JSON.stringify({ locked: ["locked/**"] }));
+    const root = pathMod.join(dir, "repo");
+    const run = (command) =>
+      spawnSync(process.execPath, [new URL("../hooks/guard.mjs", import.meta.url).pathname.replace(/^\/([a-z]:)/i, "$1")], {
+        input: JSON.stringify({ session_id: "s", cwd: root, hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command } }),
+        env: { ...process.env, CODECITY_ZONES: zones, CODECITY_EVENTS: pathMod.join(dir, "e.jsonl"), CLAUDE_PROJECT_DIR: root },
+        encoding: "utf8",
+      });
+    const denied = run("echo x > locked/secret.ts");
+    assert.equal(denied.status, 0);
+    assert.equal(JSON.parse(denied.stdout).hookSpecificOutput.permissionDecision, "deny");
+    assert.equal(run("cat locked/secret.ts").stdout, "");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
