@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { theme } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { agentColorIndex, agentKeyOf, formatAgo, formatClock, sourceOf, splitPath } from "../lib/activity.js";
@@ -15,6 +15,8 @@ const FILTERS = {
   exec: (ev) => ev.kind === "exec" || ev.kind === "search",
   warn: (ev, warnings) => ev.kind === "blocked" || Boolean(warningOf(ev, warnings)),
 };
+
+const PAGE = 120;
 
 const kindColor = (kind) =>
   ({ read: theme.read, write: theme.written, blocked: theme.blocked }[kind] ?? theme.muted);
@@ -47,6 +49,15 @@ export default function Feed({ feed, agentSeq = {}, warnings = null, onFocusPath
   }, []);
 
   const rows = useMemo(() => (feed ?? []).filter((ev) => FILTERS[filter](ev, warnings)), [feed, filter, warnings]);
+  // Render a window, not the whole history: at ten events a second the feed reaches a thousand
+  // rows, and rendering them all on every update stalled the page. Scrolling near the end grows it.
+  const [limit, setLimit] = useState(PAGE);
+  // Stable callbacks, so memoized rows really skip re-rendering.
+  const focusRef = useRef(onFocusPath);
+  focusRef.current = onFocusPath;
+  const focus = useCallback((p) => focusRef.current?.(p), []);
+  const toggle = useCallback((key) => setOpen((o) => (o === key ? null : key)), []);
+  const shown = rows.slice(0, limit);
 
   // While paused, keep the rows the user is looking at in place as new ones arrive on top.
   const prevHeight = useRef(0);
@@ -60,7 +71,9 @@ export default function Feed({ feed, agentSeq = {}, warnings = null, onFocusPath
   const newer = paused ? Math.max(0, rows.findIndex((ev) => rowKey(ev) === seenTop.current)) : 0;
 
   const onScroll = (e) => {
-    const away = e.currentTarget.scrollTop > 8;
+    const el = e.currentTarget;
+    if (el.scrollTop + el.clientHeight > el.scrollHeight - 200 && limit < rows.length) setLimit((l) => l + PAGE);
+    const away = el.scrollTop > 8;
     if (away && !paused) seenTop.current = rows[0] ? rowKey(rows[0]) : null;
     if (away !== paused) setPaused(away);
   };
@@ -141,7 +154,7 @@ export default function Feed({ feed, agentSeq = {}, warnings = null, onFocusPath
           {feed?.length > 0 && !rows.length && (
             <div style={{ fontSize: 13, color: theme.muted, padding: "4px 6px 8px" }}>{t("feed.empty")}</div>
           )}
-          {rows.map((ev, i) => (
+          {shown.map((ev, i) => (
             <Row
               key={rowKey(ev) + i}
               ev={ev}
@@ -149,8 +162,9 @@ export default function Feed({ feed, agentSeq = {}, warnings = null, onFocusPath
               agentLabel={agentLabel(ev, agentSeq)}
               warning={warningOf(ev, warnings)}
               open={open === rowKey(ev)}
-              onToggle={() => setOpen((o) => (o === rowKey(ev) ? null : rowKey(ev)))}
-              onFocusPath={onFocusPath}
+              rowId={rowKey(ev)}
+              onToggle={toggle}
+              onFocusPath={focus}
               highlight={i === 0 && !paused}
             />
           ))}
@@ -160,7 +174,8 @@ export default function Feed({ feed, agentSeq = {}, warnings = null, onFocusPath
   );
 }
 
-function Row({ ev, now, agentLabel, warning, open, onToggle, onFocusPath, highlight }) {
+// Memoized: rows whose props did not change skip re-rendering when new events arrive.
+const Row = memo(function Row({ ev, now, agentLabel, warning, open, rowId, onToggle, onFocusPath, highlight }) {
   const color = kindColor(ev.kind);
   const agentColor =
     sourceOf(ev) === "watcher" ? theme.muted : theme.agentColors[agentColorIndex(agentKeyOf(ev), theme.agentColors.length)];
@@ -173,7 +188,7 @@ function Row({ ev, now, agentLabel, warning, open, onToggle, onFocusPath, highli
   return (
     <div style={{ borderRadius: 6, background: highlight ? "rgba(127,127,127,0.08)" : "none", marginBottom: 1 }}>
       <button
-        onClick={() => (isFile ? onFocusPath?.(path) : onToggle())}
+        onClick={() => (isFile ? onFocusPath?.(path) : onToggle(rowId))}
         title={isFile ? path : command}
         style={{
           display: "grid",
@@ -290,4 +305,4 @@ function Row({ ev, now, agentLabel, warning, open, onToggle, onFocusPath, highli
       )}
     </div>
   );
-}
+});

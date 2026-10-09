@@ -77,14 +77,21 @@ export default function Buildings({ buildings, districtDepthByPath, selected = n
   };
 
   // Diff against the last applied key so setColorAt only fires on real changes.
+  // Instances currently not in the base color: the only ones that can need resetting.
+  const nonBase = useRef(new Set());
   const applyKey = (mesh, i) => {
     if (i < 0 || i >= mesh.count) return false;
     const key = desiredKey(i);
     if (applied.current[i] === key) return false;
     mesh.setColorAt(i, colorFor(key));
     applied.current[i] = key;
+    if (key === "base") nonBase.current.delete(i);
+    else nonBase.current.add(i);
     return true;
   };
+
+  // Which instances can be tinted at all: files with activity or a diff entry.
+  const indexByPath = useMemo(() => new Map((buildings ?? []).map((b, i) => [b.path, i])), [buildings]);
 
   const repaint = (indices) => {
     const mesh = ref.current;
@@ -128,6 +135,7 @@ export default function Buildings({ buildings, districtDepthByPath, selected = n
       mesh.count = buildings?.length ?? 0;
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
       applied.current = new Array(buildings?.length ?? 0).fill("base");
+      nonBase.current = new Set();
       prev.current = { hovered: null, selected: null };
       setHovered(null);
     }
@@ -176,8 +184,19 @@ export default function Buildings({ buildings, districtDepthByPath, selected = n
     tintClock.current = 0;
     const mesh = ref.current;
     if (!mesh || !mesh.count) return;
+    // Visit only candidates, not every building: with 20k buildings a full sweep four times a
+    // second was a large share of the frame budget.
+    const todo = new Set(nonBase.current);
+    for (const p of Object.keys(activityRef.current?.files ?? {})) {
+      const i = indexByPath.get(p);
+      if (i != null) todo.add(i);
+    }
+    for (const p of diffRef.current?.keys() ?? []) {
+      const i = indexByPath.get(p);
+      if (i != null) todo.add(i);
+    }
     let changed = false;
-    for (let i = 0; i < mesh.count; i++) if (applyKey(mesh, i)) changed = true;
+    for (const i of todo) if (applyKey(mesh, i)) changed = true;
     if (changed && mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
   });
 
