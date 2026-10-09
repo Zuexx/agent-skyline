@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { appendFile, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdtemp, mkdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { notIgnored, startWatcher } from "../server/watch.mjs";
@@ -53,6 +53,31 @@ test("the watcher logs a changed file as a watcher write, and skips ignored file
   evs = await events(logFile);
   assert.deepEqual(evs.map((e) => [e.source, e.kind, e.paths[0]]), [["watcher", "write", "src/a.ts"]]);
   assert.equal(evs[0].root, rootKey(dir));
+});
+
+test("touching a file without changing it (a read, an atime update) is not a write", async (t) => {
+  const { dir, logFile } = await repo(t);
+  const old = path.join(dir, "src", "old.ts");
+  await writeFile(old, "old\n");
+  const hourAgo = new Date(Date.now() - 3600_000);
+  await utimes(old, hourAgo, hourAgo);
+  const w = startWatcher({ repo: dir, logFile, settleMs: 300 });
+  t.after(() => w.close());
+  await sleep(200);
+
+  // What a reader does on Windows: the access time moves, the content and mtime do not.
+  await readFile(old);
+  await utimes(old, new Date(), hourAgo);
+  await writeFile(path.join(dir, "src", "new.ts"), "x\n");
+
+  let evs = [];
+  for (let i = 0; i < 40 && !evs.length; i++) {
+    await sleep(100);
+    evs = await events(logFile);
+  }
+  await sleep(500);
+  evs = await events(logFile);
+  assert.deepEqual(evs.map((e) => e.paths[0]), ["src/new.ts"]);
 });
 
 test("a write an agent's hook already logged is not logged again by the watcher", async (t) => {
