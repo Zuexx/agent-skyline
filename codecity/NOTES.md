@@ -120,6 +120,29 @@ supervising, this need only grows.
   }
   ```
 
+### Later: an overworld style (Zelda-like terrain)
+
+Asked for on 2026-10-09; parked as a future improvement. A second scene style next to the
+minimal city, switchable, not a replacement. The terrain has to carry data, or it is just
+prettier boxes:
+
+| Code | Overworld |
+|---|---|
+| Top-level folder | A region with its own landform (`api` mountains, `app` plains, `docs` a lakeside town, `openspec` forest…) |
+| File | A building in that region (tests as watchtowers, docs as cottages); clicking and box-select still work |
+| Line count | Building height, unchanged; buildings stand on level pads or terraces so heights stay comparable |
+| Dependency roads | Paths or rivers on the ground instead of arcs |
+| Files not touched this session | Fog of war, lifted as the agent reads: answers "where has it looked?" |
+| Write / blocked | A campfire lighting up / a smoke signal |
+
+Look: cel shading, wind-blown grass, water, distance fog and sky, following the night/day theme.
+All procedural (no asset licensing); CC0 low-poly packs (Quaternius, Kenney nature) or ComfyUI
+textures later if more detail is wanted.
+
+Plan in two stages: (1) terrain, regional landforms, cel shading, fog of war; (2) grass, water,
+paths and rivers, props. Measure performance at 20,000 files before stage 2: grass and props
+will need thinning or zoom-dependent display, and the 60 fps of the minimal city may not hold.
+
 ## Technology
 
 | Purpose | Choice |
