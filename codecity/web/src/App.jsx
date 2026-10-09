@@ -429,8 +429,9 @@ export default function App() {
         <hemisphereLight args={[theme.hemiSky, theme.hemiGround, theme.hemiIntensity]} />
         <directionalLight position={[-6, 10, 3]} intensity={theme.keyIntensity} color={theme.keyLight} />
         <OrthographicCamera makeDefault position={cameraPosition} />
-        {/* Pan + zoom; rotation clamped above ground. Grabbing the map turns follow mode off. */}
-        <MapControls makeDefault maxPolarAngle={Math.PI / 2 - 0.05} onStart={() => setFollow(false)} />
+        {/* Pan + zoom; rotation clamped above ground. Grabbing the map turns follow mode off.
+            The wheel zooms toward the cursor (like a map), about 8% per notch. */}
+        <MapControls makeDefault zoomToCursor zoomSpeed={1.6} maxPolarAngle={Math.PI / 2 - 0.05} onStart={() => setFollow(false)} />
         <CameraFollow target={latestTarget} enabled={follow} focus={focus} />
         <PickSupport enabled={pickMode} projRef={projRef} />
         <FitCamera width={view.width} depth={view.depth} nonce={fitNonce} />
