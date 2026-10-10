@@ -28,7 +28,7 @@ cd .. && node server/server.mjs --repo D:/path/to/repo  # 啟動伺服器
 
 ### 可以監看哪些資料夾
 
-任何 **git repo** 都可以,不一定是程式碼:筆記、文件、寫作專案、資料檔都行。每個檔案是一棟大樓,高度是行數(二進位檔是平的)。被 `.gitignore` 排除的檔案不顯示;新建的檔案不用 `git add` 就會出現。還不是 repo 的資料夾,只要 `git init` 一次就好(不需要 commit)。檔案清單、分支比較、未 commit 的 diff 和歷史都靠 git;依賴道路只支援 JS/TS 和 C#。
+任何 **git repo** 都可以,不一定是程式碼:筆記、文件、寫作專案、資料檔都行。每個檔案是一棟大樓,高度是行數(二進位檔是平的)。被 `.gitignore` 排除的檔案不顯示;新建的檔案不用 `git add` 就會出現。還不是 repo 的資料夾,只要 `git init` 一次就好(不需要 commit)。檔案清單、分支比較、未 commit 的 diff 和歷史都靠 git。依賴道路支援 JS/TS、Python、Go、Java/Kotlin/Scala、C#、C/C++/Objective-C、Rust、PHP、Ruby 和 Swift(見[依賴道路](#依賴道路))。
 
 ## 接上 agent
 
@@ -69,6 +69,27 @@ pi --extension D:/path/to/agent-skyline/adapters/pi/agent-skyline.js     # 只�
 
 禁區擋的是寫入,讀取不受影響。實測時觀察到 agent 被擋下 Edit 之後,改用 `echo … > file` 寫進去,所以 shell 指令也會檢查:重新導向、`tee`、`sed -i`、`cp`、`mv`、`rm`、`touch`、`git checkout --`,以及對應的 PowerShell 指令。在直譯器裡寫檔(`python -c …`、`node -e …`)或透過腳本寫檔,事前看不出來,由檔案監看事後記錄。
 
+## 依賴道路
+
+道路來自每種語言的簡單規則,不是編譯器:不用另外安裝任何東西,而且比較分支時直接從 git 讀出來的內容也能用同一套規則。它回答的是「誰用到這個檔案」,偶爾會多出編譯器不會認的道路(註解裡出現的名稱、兩個同名的型別)。
+
+| 語言 | 什麼情況會畫出道路 |
+|---|---|
+| JS/TS | 相對路徑的 import 和 tsconfig 的 `paths` 別名;import 了卻沒用到的會標出來 |
+| Python | `import a.b`、`from a.b import c`、相對的 `from .x import y`,不管原始碼放在哪一層(`src/` 結構也可以) |
+| Go | import repo 自己的 package(依 `go.mod` 的 module)時,連到宣告了用到的名稱的檔案;同一個 package 的檔案依共用的名稱相連,所以 `x_test.go` 會連到 `x.go` |
+| Java、Kotlin、Scala | 用到同 package、單一或萬用字元 import、static import 的型別;三種語言彼此看得到 |
+| C# | 用到看得見的命名空間裡的型別:自己和上層命名空間、`using`、`global using` |
+| C、C++、Objective-C | `#include "…"` 同資料夾的檔案,或路徑結尾相符的 repo 檔案 |
+| Rust | `mod x;`,以及 `crate::`、`self::`、`super::`、workspace 裡其他 crate 的路徑,連到最深的那個模組檔案 |
+| PHP | 用到同命名空間、`use`(含改名和群組)、完整名稱的類別,以及 `require`/`include` |
+| Ruby | `require_relative`、依路徑的 `require`,以及用到的 class/module(Rails 自動載入) |
+| Swift | 用到的型別,範圍是 repo 裡所有 Swift 檔案 |
+
+對變數呼叫的方法(`user.save()`)不追:`save` 宣告在哪個檔案,取決於變數的型別,而型別本身通常已經連到同一個檔案。
+
+要支援新語言,就在 `server/deps/` 多寫一個模組(格式和共用工具在 `server/deps/common.mjs`),再加進 `server/deps.mjs` 的 `LANGUAGES`。測試檔是依檔名認的,在 `web/src/lib/views.js` 的 `roleOf`,道路變綠色就是靠它。
+
 ## 畫面上能做的事
 
 | 功能 | 怎麼用 |
@@ -78,7 +99,7 @@ pi --extension D:/path/to/agent-skyline/adapters/pi/agent-skyline.js     # 只�
 | 即時動態 | 左下角;可篩選、往回捲;點檔案讓鏡頭飛過去,點指令展開完整內容 |
 | 比較分支 | 選一個分支和 main 比較,依 git diff 上色;點大樓看 diff |
 | 檔案資訊 | 點大樓:行數、活動、**未 commit 的 diff**(比較分支時是分支的 diff)、**在 VS Code 開啟** |
-| 依賴道路 | 點大樓同時畫出弧線:紫 = 它用到的、粉紅 = 用到它的、綠 = 它的測試(JS/TS 的 import、C# 的型別使用;面板也會列出)。JS/TS 裡 import 了卻沒用到任何名稱的,畫成灰色虛線,面板標「沒用到」,review 清單也會列為理由 |
+| 依賴道路 | 點大樓同時畫出弧線:紫 = 它用到的、粉紅 = 用到它的、綠 = 它的測試(規則見[依賴道路](#依賴道路);面板也會列出)。JS/TS 裡 import 了卻沒用到任何名稱的,畫成灰色虛線,面板標「沒用到」,review 清單也會列為理由 |
 | Review 清單 | 清單 icon:比較中的分支改動,或所有未 commit 的改動加上這次工作階段寫過的檔案,依風險排序並附理由(警示、沒有測試、近期常改、很多檔案依賴、改動很大),看完打勾 |
 | 框選派工 | 選取 icon → 拖曳框選大樓(或逐棟點選)。複製「任務 + 檔案範圍」,或直接存成任務範圍 |
 | 任務範圍 | 旗子 icon → 點街區;範圍外的寫入會警示。沒宣告時自動推論 |

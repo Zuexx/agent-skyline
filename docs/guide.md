@@ -36,8 +36,9 @@ Any folder that is a **git repository**, code or not: notes, docs, a writing pro
 all work. Every file is a building and its height is its line count (binary files are flat).
 Files git ignores (`.gitignore`) are left out; new files show up before anyone runs `git add`.
 A folder that is not a repository yet only needs `git init` (no commit required). Git is what
-gives the city its file list, branch comparison, uncommitted diffs and history; dependency roads
-only exist for JS/TS and C#.
+gives the city its file list, branch comparison, uncommitted diffs and history. Dependency roads
+exist for JS/TS, Python, Go, Java/Kotlin/Scala, C#, C/C++/Objective-C, Rust, PHP, Ruby and Swift
+(see [Dependency roads](#dependency-roads)).
 
 ## Connect an agent
 
@@ -93,6 +94,33 @@ with `echo … > file`, so shell commands are checked too: redirections, `tee`, 
 (`python -c …`, `node -e …`) or a script cannot be seen in advance; the file watcher records them
 afterwards.
 
+## Dependency roads
+
+Roads come from simple, explainable rules per language, not from a compiler: nothing to install,
+and the same rules work on a branch read straight from git. They answer "who uses this file",
+and can occasionally add a road a compiler would not (a name in a comment, two types with the
+same name).
+
+| Language | What makes a road |
+|---|---|
+| JS/TS | Relative imports and tsconfig `paths` aliases; an import whose names are never used is marked |
+| Python | `import a.b` / `from a.b import c` / relative `from .x import y`, from any source root (`src/` layouts work) |
+| Go | Imports of the repo's own packages (by the `go.mod` module) to the files declaring the names used; files of one package by the names they share, so `x_test.go` finds `x.go` |
+| Java, Kotlin, Scala | Types named from the same package, single or wildcard imports, static imports; the three languages see each other |
+| C# | Types named from visible namespaces: own and parent namespaces, `using`, `global using` |
+| C, C++, Objective-C | `#include "…"` next to the file, or the repo file ending in that path |
+| Rust | `mod x;`, and `crate::` / `self::` / `super::` / workspace-crate paths to the deepest module file |
+| PHP | Classes named from the same namespace, `use` (renamed and grouped), fully qualified names, `require`/`include` |
+| Ruby | `require_relative`, `require` by path, and classes/modules named (for Rails-style autoloading) |
+| Swift | Types named, across all Swift files of the repo |
+
+Methods called on a value (`user.save()`) are not followed: which file declares `save` depends on
+the value's type. The type itself usually leads to the same file.
+
+Another language is one more module in `server/deps/` (`server/deps/common.mjs` describes its
+shape and holds the shared helpers) and one line in `LANGUAGES` in `server/deps.mjs`. Test files
+are recognized by name in `web/src/lib/views.js` (`roleOf`), which is what makes a road green.
+
 ## In the UI
 
 | Feature | How |
@@ -102,7 +130,7 @@ afterwards.
 | Activity | Bottom left; filter, scroll back; click a file to fly there, click a command to expand it |
 | Compare | Pick a branch to compare with main; the city is colored by git diff; click a building for its diff |
 | File details | Click a building: lines, activity, its **uncommitted diff** (or the branch's diff when comparing), **Open in VS Code** |
-| Dependency roads | Clicking a building also draws arcs: violet to what it uses, pink from what uses it, green from its tests (JS/TS imports, C# type use; the panel lists them). A JS/TS import whose names are never used is a grey dashed road, tagged "unused" in the panel and counted in the review list |
+| Dependency roads | Clicking a building also draws arcs: violet to what it uses, pink from what uses it, green from its tests (see [Dependency roads](#dependency-roads); the panel lists them). A JS/TS import whose names are never used is a grey dashed road, tagged "unused" in the panel and counted in the review list |
 | Review list | List icon: the compared branch's changes, or everything uncommitted plus this session's writes, riskiest first, with reasons (warnings, no tests, recent churn, many dependents, large change). Tick files off as you go |
 | Assign a task | Select icon → drag a box over buildings (or click them). Copy the task with the files as its scope, or save them as the task scope |
 | Task scope | Flag icon → click districts; writes outside raise a warning. With nothing declared, the scope is inferred |

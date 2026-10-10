@@ -1,22 +1,34 @@
-// Which repo files use which: the roads of the city. Two cheap, explainable heuristics, no parser:
+// Which repo files use which: the roads of the city. Cheap, explainable heuristics per language,
+// no parser and no toolchain, so they work the same on a git ref (branch comparison) as on disk:
 //
-// - JS/TS: relative imports ("./x", "../y") and tsconfig `paths` aliases ("@/lib/x"), resolved
-//   against the repo's own file list (extensions and index files tried in the usual order).
-//   Package imports ("react") are not repo files and are ignored.
-// - C#: a file uses a type when it names it and the type's namespace is visible to it (its own
-//   namespace and parents, its `using` lines, and any `global using`). Types are found from
-//   `class/record/interface/enum/struct` declarations. Good enough to say "who uses this", not a
-//   compiler: a type name that happens to appear in a comment can add an edge.
+// - JS/TS (this file): relative imports ("./x", "../y") and tsconfig `paths` aliases ("@/lib/x"),
+//   resolved against the repo's own file list (extensions and index files tried in the usual
+//   order). Package imports ("react") are not repo files and are ignored.
+// - Every other language is a module in deps/ (deps/common.mjs describes its shape): C#, Go,
+//   Python, Java/Kotlin/Scala, C/C++/Objective-C, Rust, PHP, Ruby, Swift. Supporting another
+//   language is writing one more module and listing it in LANGUAGES below.
 //
 // JS/TS imports whose names the file never uses are kept, marked "unused": a leftover import is
-// still loaded at run time, and is worth a look in review. (C# needs no such mark: an edge there
-// already means the type is named in the code.)
+// still loaded at run time, and is worth a look in review. The other languages get no such mark.
 //
 // Returns { edges: [[from, to] or [from, to, "unused"], ...], truncated } with repo paths,
 // deduplicated, no self-edges.
 
 import { readFileSync, statSync } from "node:fs";
 import path from "node:path";
+import { dirOf, joinRepo } from "./deps/common.mjs";
+import cfamily from "./deps/cfamily.mjs";
+import csharp from "./deps/csharp.mjs";
+import go from "./deps/go.mjs";
+import jvm from "./deps/jvm.mjs";
+import php from "./deps/php.mjs";
+import python from "./deps/python.mjs";
+import ruby from "./deps/ruby.mjs";
+import rust from "./deps/rust.mjs";
+import swift from "./deps/swift.mjs";
+
+export { joinRepo };
+const LANGUAGES = [csharp, go, python, jvm, cfamily, rust, php, ruby, swift];
 
 const MAX_FILE_BYTES = 512 * 1024;
 // Parsing is about 0.12 ms per file (VS Code: 8,000 files in 0.9 s), so even a large repo stays a
@@ -25,10 +37,14 @@ const MAX_FILE_BYTES = 512 * 1024;
 const MAX_PARSED_FILES = 40000;
 
 const JS_EXT = /\.(m|c)?(j|t)sx?$/i;
-const CS_EXT = /\.cs$/i;
+const TSCONFIG = /(^|\/)tsconfig[^/]*\.json$/i;
+const languageOf = (p) => LANGUAGES.find((l) => l.ext.test(p));
 
-/** Files buildDeps reads: sources and tsconfigs. Lets a git-ref reader load only these. */
-export const readsFile = (p) => JS_EXT.test(p) || CS_EXT.test(p) || /(^|\/)tsconfig[^/]*\.json$/i.test(p);
+/**
+ * Files buildDeps reads: sources, tsconfigs and what the languages need besides (go.mod,
+ * Cargo.toml). Lets a git-ref reader load only these.
+ */
+export const readsFile = (p) => JS_EXT.test(p) || TSCONFIG.test(p) || LANGUAGES.some((l) => l.ext.test(p) || l.reads?.test(p));
 const RESOLVE_EXT = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"];
 
 /** Reads repo files from the working tree; buildDeps takes another reader for a git ref. */
@@ -41,21 +57,6 @@ export const diskReader = (root) => (p) => {
     return null;
   }
 };
-
-const dirOf = (p) => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "");
-
-/** Join and normalize "a/b" + "../c" -> "a/c"; null when it climbs out of the repo. */
-export function joinRepo(dir, rel) {
-  const out = dir ? dir.split("/") : [];
-  for (const part of rel.split("/")) {
-    if (part === "" || part === ".") continue;
-    if (part === "..") {
-      if (!out.length) return null;
-      out.pop();
-    } else out.push(part);
-  }
-  return out.join("/");
-}
 
 /** First existing repo file for an import target without (or with) an extension. */
 function resolveFile(target, files) {
@@ -80,7 +81,7 @@ function parseJsonc(text) {
 function loadAliases(read, paths) {
   const out = [];
   for (const p of paths) {
-    if (!/(^|\/)tsconfig[^/]*\.json$/i.test(p)) continue;
+    if (!TSCONFIG.test(p)) continue;
     const text = read(p);
     if (!text) continue;
     let opts;
@@ -186,49 +187,6 @@ function jsEdges(p, source, files, aliases) {
   return out;
 }
 
-// C#: strip comments and string literals before looking at identifiers.
-const stripCs = (text) => text.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\/|@"(?:""|[^"])*"|"(?:\\.|[^"\\\n])*"/g, " ");
-
-function parseCs(text) {
-  const src = stripCs(text);
-  const ns = src.match(/\bnamespace\s+([\w.]+)/)?.[1] ?? "";
-  const usings = [];
-  const globals = [];
-  for (const m of src.matchAll(/^\s*(global\s+)?using\s+(?!static\b)([\w.]+)\s*;/gm)) (m[1] ? globals : usings).push(m[2]);
-  const types = [...src.matchAll(/\b(?:class|record|interface|enum|struct)\s+([A-Z]\w*)/g)].map((m) => m[1]);
-  const idents = new Set(src.match(/\b[A-Z]\w*\b/g) ?? []);
-  return { ns, usings, globals, types, idents };
-}
-
-function csEdges(parsed) {
-  // namespace -> type name -> files declaring it
-  const byNs = new Map();
-  const globals = new Set();
-  for (const [p, f] of parsed) {
-    f.globals.forEach((g) => globals.add(g));
-    let names = byNs.get(f.ns);
-    if (!names) byNs.set(f.ns, (names = new Map()));
-    for (const t of f.types) {
-      if (!names.has(t)) names.set(t, []);
-      names.get(t).push(p);
-    }
-  }
-  const edges = new Map();
-  for (const [p, f] of parsed) {
-    const visible = new Set([...f.usings, ...globals]);
-    for (let n = f.ns; n; n = n.includes(".") ? n.slice(0, n.lastIndexOf(".")) : "") visible.add(n);
-    visible.add("");
-    const out = new Set();
-    for (const n of visible) {
-      const names = byNs.get(n);
-      if (!names) continue;
-      for (const [t, decl] of names) if (f.idents.has(t)) for (const d of decl) if (d !== p) out.add(d);
-    }
-    edges.set(p, out);
-  }
-  return edges;
-}
-
 /**
  * Wire form of buildDeps' result: { paths, edges: [from0, to0, from1, to1, ...] as indexes into
  * paths, unused: [edge numbers marked unused], truncated }. Repeating both full paths per edge made VS Code's 139k edges 17 MB of JSON;
@@ -258,17 +216,27 @@ export function packDeps({ edges, truncated }) {
  */
 export function buildDeps(root, paths, read = diskReader(root)) {
   const files = new Set(paths);
-  const sources = paths.filter((p) => JS_EXT.test(p) || CS_EXT.test(p));
+  const sources = paths.filter((p) => JS_EXT.test(p) || languageOf(p));
   const truncated = sources.length > MAX_PARSED_FILES;
   const aliases = loadAliases(read, paths);
   const edges = [];
-  const cs = new Map();
+  const byLanguage = new Map(LANGUAGES.map((l) => [l, new Map()]));
   for (const p of sources.slice(0, MAX_PARSED_FILES)) {
     const text = read(p);
     if (text == null) continue;
-    if (CS_EXT.test(p)) cs.set(p, parseCs(text));
+    const lang = JS_EXT.test(p) ? null : languageOf(p);
+    if (lang) byLanguage.get(lang).set(p, text);
     else for (const [to, used] of jsEdges(p, text, files, aliases)) edges.push(used ? [p, to] : [p, to, "unused"]);
   }
-  for (const [from, tos] of csEdges(cs)) for (const to of tos) edges.push([from, to]);
+  const seen = new Set();
+  for (const [lang, texts] of byLanguage) {
+    if (!texts.size) continue;
+    for (const [from, to] of lang.edges(texts, { files, read })) {
+      const key = `${from}\n${to}`;
+      if (from === to || seen.has(key)) continue;
+      seen.add(key);
+      edges.push([from, to]);
+    }
+  }
   return { edges, truncated };
 }

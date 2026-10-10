@@ -92,6 +92,38 @@ function FitCamera({ width, depth, nonce }) {
 }
 
 /**
+ * Two fixes for MapControls on an orthographic camera:
+ * - three's middle-button zoom passes clientX as the cursor's y (`_updateZoomParameters(event.
+ *   clientX, event.clientX)`), so a middle drag zoomed toward the wrong point and dragged the
+ *   camera sideways and down into the city.
+ * - Whatever moved it, a camera that ends up inside the city cuts it off at the near plane (a
+ *   straight line through the scene). Moving an orthographic camera along its view direction does
+ *   not change the picture, so it is pushed back to at least `minDistance` from its target.
+ */
+function ControlsFixes({ minDistance }) {
+  const camera = useThree((s) => s.camera);
+  const controls = useThree((s) => s.controls);
+  useEffect(() => {
+    if (!controls) return;
+    controls._handleMouseDownDolly = function (event) {
+      this._updateZoomParameters(event.clientX, event.clientY);
+      this._dollyStart.set(event.clientX, event.clientY);
+    };
+    const offset = new THREE.Vector3();
+    const keepOut = () => {
+      if (!camera.isOrthographicCamera) return;
+      offset.subVectors(camera.position, controls.target);
+      if (offset.length() >= minDistance) return;
+      camera.position.copy(controls.target).add(offset.setLength(minDistance));
+      camera.updateMatrixWorld();
+    };
+    controls.addEventListener("change", keepOut);
+    return () => controls.removeEventListener("change", keepOut);
+  }, [camera, controls, minDistance]);
+  return null;
+}
+
+/**
  * Select mode support inside the canvas: frees the left mouse button from panning (right-drag
  * rotation and wheel zoom keep working), and publishes a world -> screen projection for the box
  * selection drawn over the canvas.
@@ -502,6 +534,7 @@ export default function App() {
         {/* Pan + zoom; rotation clamped above ground. Grabbing the map turns follow mode off.
             The wheel zooms toward the cursor (like a map), about 8% per notch. */}
         <MapControls makeDefault zoomToCursor zoomSpeed={1.6} maxPolarAngle={Math.PI / 2 - 0.05} onStart={() => setFollow(false)} />
+        <ControlsFixes minDistance={new THREE.Vector3(...cameraPosition).length()} />
         <CameraFollow target={latestTarget} enabled={follow} focus={focus} />
         <PickSupport enabled={pickMode} projRef={projRef} />
         <FitCamera width={view.width} depth={view.depth} nonce={fitNonce} />

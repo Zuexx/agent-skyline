@@ -17,12 +17,15 @@ export const VIEWS = [
 const ASSET = /\.(png|jpe?g|gif|svg|ico|webp|mp4|webm|mp3|wav|woff2?|ttf|otf|eot|pdf)$/i;
 const CONFIG =
   /(^|\/)\.[^/]+$|(^|\/)\.(github|claude|agents|config|githooks|template\.config)\/|\.(json|ya?ml|toml|ini|lock|csproj|sln|props|targets|editorconfig|env|example)$|(^|\/)(Dockerfile|compose\.ya?ml|LICENSE)$/i;
-const TEST = /(^|\/)(tests?|__tests__|e2e|spec)\/|\.(test|spec)\.[^./]+$|\.Tests\//i;
+// Test folders, x.test.ts / x.spec.ts, Go and Python x_test.go / x_test.py / test_x.py, Ruby
+// x_spec.rb, and JVM/.NET/PHP/Swift FooTest(s).java style names (case-sensitive: not "Contest").
+const TEST = /(^|\/)(tests?|__tests__|e2e|spec)\/|\.(test|spec)\.[^./]+$|\.Tests\/|_(test|spec)\.[^./]+$|(^|\/)test_[^/]+\.py$/i;
+const TEST_CLASS = /[a-z0-9]Tests?\.(java|kt|kts|scala|cs|php|swift)$/;
 const DOC = /\.(md|mdx|txt|rst)$/i;
 
 /** Role group id of a repo path. Order of checks matters: a test .json is a test, not config. */
 export function roleOf(path) {
-  if (TEST.test(path)) return "test";
+  if (TEST.test(path) || TEST_CLASS.test(path)) return "test";
   if (/^openspec\//.test(path)) return "spec";
   if (ASSET.test(path)) return "asset";
   if (DOC.test(path)) return "doc";
