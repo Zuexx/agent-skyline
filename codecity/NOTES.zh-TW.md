@@ -4,7 +4,7 @@
 
 > 這是動工前的構想筆記,保留原貌。實際做了什麼、和構想哪裡不同,見 `PROGRESS.zh-TW.md`。
 
-- 起點:WareTrack 拆解(`../waretrack/NOTES.md`)的通用公式,套用到程式碼上。
+- 起點:3D 倉儲管理 App(WareTrack)影片拆解得到的通用公式,套用到程式碼上。
 - 定位:個人專案,全部本機執行,不使用公司資源(原本考慮的 Azure AI 已放棄)。
 - 狀態:開發順序裡除了 LLM 查詢,都已實作:事件、禁區、城市、框選指派工作、跳到 VS Code、session 重播、git diff 比較、依賴道路、依風險排序的 review(見 `PROGRESS.zh-TW.md`)。架構邊界檢查還沒做。
 

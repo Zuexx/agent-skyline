@@ -21,20 +21,20 @@ checked clean after every step).
 
 | Commit | Contents |
 |---|---|
-| `53c101b` | CodeCity itself: hooks, zones, server, 3D city, grouping, git diff, themes, i18n, file watcher |
-| `b1e5c46` | pi adapter; shell writes into locked zones are blocked |
-| `0f9835c` | Alerts, desktop notifications, scope check |
-| `401ea59` | Timeline replay |
-| `4f4d5b3` | Performance at 20,000 files |
-| `f0ff9da` | Demo video; brighter night city |
-| `77d3af3` | Notes and progress log English-first |
-| `a945399` | Open in VS Code; camera controls in the legend |
-| `bbd51b8` | File watcher no longer logs reads as writes |
-| `c3e548f` | Dependency roads |
-| `1a057ba` | Risk-ordered review list; branch dependencies while comparing |
-| `3895f92` | Box-select task assignment |
-| `fabea92` | Uncommitted changes and their diffs |
-| `6d2924c` | Optional autostart with a Claude Code session |
+| `ddafe43` | CodeCity itself: hooks, zones, server, 3D city, grouping, git diff, themes, i18n, file watcher |
+| `3941b6f` | pi adapter; shell writes into locked zones are blocked |
+| `366e442` | Alerts, desktop notifications, scope check |
+| `307b701` | Timeline replay |
+| `585e936` | Performance at 20,000 files |
+| `2233a9f` | Demo video; brighter night city |
+| `c191032` | Notes and progress log English-first |
+| `927a4e1` | Open in VS Code; camera controls in the legend |
+| `3df1a7c` | File watcher no longer logs reads as writes |
+| `3794324` | Dependency roads |
+| `72f53d8` | Risk-ordered review list; branch dependencies while comparing |
+| `57b5094` | Box-select task assignment |
+| `ed7ade6` | Uncommitted changes and their diffs |
+| `2abbe8f` | Optional autostart with a Claude Code session |
 
 ## How to use it
 

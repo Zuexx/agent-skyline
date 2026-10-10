@@ -5,7 +5,7 @@
 > These are the design notes written before building, kept as they were. What was actually built,
 > and where it differs, is in `PROGRESS.md`.
 
-- Origin: the general formula from the WareTrack teardown (`../waretrack/NOTES.md`), applied to code.
+- Origin: the general formula from a teardown of a 3D warehouse-management app (WareTrack), applied to code.
 - Scope: a personal project that runs entirely on this machine and uses no company resources (the
   earlier Azure AI idea was dropped).
 - Status: everything in the build order is built except LLM queries: events, zones, the city, box-select task assignment, jumping to VS Code, session replay, git

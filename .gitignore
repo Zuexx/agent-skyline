@@ -9,3 +9,6 @@ codecity/data/
 
 # Claude Code local settings (CodeCity hooks)
 .claude/settings.local.json
+
+# Reference teardowns (third-party screenshots) stay local
+waretrack/
