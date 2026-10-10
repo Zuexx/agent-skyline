@@ -33,7 +33,7 @@ if (!targets.length) {
   process.exit(1);
 }
 for (const r of targets) {
-  // Only kill the PID if that port is still a Agent Skyline with that PID: PIDs get reused.
+  // Only kill the PID if that port is still an Agent Skyline with that PID: PIDs get reused.
   const p = await probe(r.port);
   if (p.health?.pid === r.pid) {
     try {

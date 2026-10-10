@@ -4,7 +4,7 @@
 //   node cli/install-hooks.mjs <repo> --write    write <repo>/.claude/settings.local.json
 //
 // Options (off by default):
-//   --autostart   also add a SessionStart hook that starts a Agent Skyline server for the repo when a
+//   --autostart   also add a SessionStart hook that starts an Agent Skyline server for the repo when a
 //                 Claude Code session begins (reusing one that is already running)
 //   --open        with --autostart: open the city in the browser when the hook starts a server
 //   --port <n>    with --autostart: first port to try (default 4477)

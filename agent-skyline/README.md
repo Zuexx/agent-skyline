@@ -62,7 +62,7 @@ node cli/install-hooks.mjs D:/path/to/repo --write --autostart          # start 
 node cli/install-hooks.mjs D:/path/to/repo --write --autostart --open   # …and open the browser
 ```
 
-This adds a SessionStart hook (`hooks/session-start.mjs`). It reuses a Agent Skyline server that already
+This adds a SessionStart hook (`hooks/session-start.mjs`). It reuses an Agent Skyline server that already
 serves the repo; otherwise it starts one in the background on the first free port from 4477
 (`--port` to change). `--open` opens the browser only when it had to start a server. The hook prints
 nothing and never fails the session. Servers it started keep running after the session; list or

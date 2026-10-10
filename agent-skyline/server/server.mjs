@@ -307,7 +307,7 @@ export function createServer({ repo, logFile, zonesFile, scopeFile = null, webRo
         return;
       }
       if (p === "/api/health" && req.method === "GET") {
-        // Lets the session-start hook tell "a Agent Skyline for this repo" from anything else on the port.
+        // Lets the session-start hook tell "an Agent Skyline for this repo" from anything else on the port.
         json(res, 200, { app: "agent-skyline", repoPath, pid: process.pid });
         return;
       }

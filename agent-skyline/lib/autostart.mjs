@@ -1,4 +1,4 @@
-// Make sure a Agent Skyline server is running for a repo: reuse one that already serves it, otherwise
+// Make sure an Agent Skyline server is running for a repo: reuse one that already serves it, otherwise
 // start one in the background on the first free port. Used by the opt-in SessionStart hook.
 //
 // Ports base..base+tries-1 are probed. A port answering /api/health for this repo is reused; a
