@@ -1,0 +1,10 @@
+{
+  "name": "agent-skyline-demo",
+  "private": true,
+  "type": "module",
+  "description": "Records the Agent Skyline demo video by driving the real app in Chrome",
+  "devDependencies": {
+    "playwright-core": "1.57.0"
+  }
+}
+

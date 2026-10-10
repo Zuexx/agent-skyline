@@ -1,0 +1,10 @@
+{
+  "name": "agent-skyline-bench",
+  "private": true,
+  "type": "module",
+  "description": "Performance checks for Agent Skyline; kept apart so the hooks and server stay dependency-free",
+  "devDependencies": {
+    "playwright-core": "1.57.0"
+  }
+}
+

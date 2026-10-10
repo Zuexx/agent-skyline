@@ -2,12 +2,12 @@
 *.webm
 *.mkv
 
-# CodeCity: dependencies, build output, and live data (event log, locked zones) stay local
+# Agent Skyline: dependencies, build output, and live data (event log, locked zones) stay local
 node_modules/
-codecity/web/dist/
-codecity/data/
+agent-skyline/web/dist/
+agent-skyline/data/
 
-# Claude Code local settings (CodeCity hooks)
+# Claude Code local settings (Agent Skyline hooks)
 .claude/settings.local.json
 
 # Reference teardowns (third-party screenshots) stay local
