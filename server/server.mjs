@@ -83,7 +83,7 @@ async function sendFile(res, file) {
   res.end(data);
 }
 
-// Serve agent-skyline/web/dist if it exists: a real file when the path maps to one inside dist,
+// Serve web/dist if it exists: a real file when the path maps to one inside dist,
 // otherwise index.html (SPA fallback). Path traversal outside dist is rejected.
 async function serveStatic(res, url, distRoot) {
   let pathname;

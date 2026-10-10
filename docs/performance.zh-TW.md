@@ -66,7 +66,7 @@
 ## 重現
 
 ```bash
-cd agent-skyline/bench && npm install
+cd bench && npm install
 node make-repo.mjs /tmp/repo20000 20000
 AGENT_SKYLINE_EVENTS=/tmp/perf/events.jsonl node ../server/server.mjs --repo /tmp/repo20000 --port 4479 --no-watch
 node ../cli/simulate.mjs --repo /tmp/repo20000 --file /tmp/perf/events.jsonl --agents 4 --interval 100 --count 3000

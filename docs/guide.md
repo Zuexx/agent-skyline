@@ -1,6 +1,6 @@
-# Agent Skyline
+# Agent Skyline: full guide
 
-[繁體中文](README.zh-TW.md)
+[繁體中文](guide.zh-TW.md) · [Back to the front page](../README.md)
 
 Agent Skyline draws a git repository as a 3D city — folders are districts, files are buildings,
 building height is line count — and uses it to **supervise AI coding agents**:
@@ -14,15 +14,15 @@ building height is line count — and uses it to **supervise AI coding agents**:
 It works with **Claude Code** (hooks) and **pi** (an extension). Anything else — other agents, or
 people — is still seen through a file watcher, just without knowing who made the change.
 
-More context: `NOTES.md` (the idea and why it is shaped like this), `PROGRESS.md` (how it was
-built, every decision and the one incident), `specs/` (the step-by-step specs).
+More context: [`NOTES.md`](NOTES.md) (the idea and why it is shaped like this), [`PROGRESS.md`](PROGRESS.md) (how it was
+built, every decision and the one incident), [`specs/`](../specs/) (the step-by-step specs).
 
 ## Quick start
 
-Requires Node 22+ and git.
+Requires Node 22+ and git. Run these from the repository root.
 
 ```bash
-cd agent-skyline/web && npm install && npm run build       # build the UI once
+cd web && npm install && npm run build                  # build the UI once
 cd .. && node server/server.mjs --repo D:/path/to/repo  # start the server
 ```
 

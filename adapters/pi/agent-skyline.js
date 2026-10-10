@@ -5,7 +5,7 @@
 // pi events are translated into the Claude Code hook payload shape and passed through the same
 // normalize() and decide(), so both agents are judged by one rulebook.
 //
-// Load for one run:   pi --extension D:/Labs/game-view-ideas/agent-skyline/adapters/pi/agent-skyline.js
+// Load for one run:   pi --extension D:/Labs/game-view-ideas/adapters/pi/agent-skyline.js
 // Load always:        copy (or import) this file from ~/.pi/agent/extensions/
 //
 // Never throws out of a handler for logging problems: pi treats a failing tool_call handler as a

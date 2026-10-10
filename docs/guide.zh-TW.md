@@ -1,6 +1,6 @@
-# Agent Skyline
+# Agent Skyline 完整說明
 
-[English](README.md)
+[English](guide.md) · [回到首頁](../README.zh-TW.md)
 
 Agent Skyline 把 git repo 畫成 3D 城市:資料夾是街區、檔案是大樓、大樓高度是行數。主要用途是**監督 AI coding agent**:
 
@@ -11,14 +11,14 @@ Agent Skyline 把 git repo 畫成 3D 城市:資料夾是街區、檔案是大樓
 
 支援 **Claude Code**(hook)和 **pi**(擴充)。其他 agent 或人改的檔案,也會被檔案監看記錄,只是不知道是誰改的。
 
-延伸閱讀:`NOTES.zh-TW.md`(構想,以及為什麼做成這樣)、`PROGRESS.zh-TW.md`(開發過程、每個決定和一次事故)、`specs/`(每一步的規格)。
+延伸閱讀:[`NOTES.zh-TW.md`](NOTES.zh-TW.md)(構想,以及為什麼做成這樣)、[`PROGRESS.zh-TW.md`](PROGRESS.zh-TW.md)(開發過程、每個決定和一次事故)、[`specs/`](../specs/)(每一步的規格)。
 
 ## 快速開始
 
-需要 Node 22 以上和 git。
+需要 Node 22 以上和 git。以下指令都在 repo 根目錄執行。
 
 ```bash
-cd agent-skyline/web && npm install && npm run build       # 建置畫面(只要做一次)
+cd web && npm install && npm run build                  # 建置畫面(只要做一次)
 cd .. && node server/server.mjs --repo D:/path/to/repo  # 啟動伺服器
 ```
 

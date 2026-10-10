@@ -6,7 +6,7 @@
 
 Agent Skyline 把 git repo 畫成一座 3D 城市:資料夾是街區、檔案是大樓、大樓高度是行數。Claude Code(或 pi)讀寫檔案時,對應的大樓會即時亮起來。
 
-[![Agent Skyline 演示](agent-skyline/demo/poster.jpg)](https://github.com/Zuexx/agent-skyline/releases/download/demo/agent-skyline-demo.mp4)
+[![Agent Skyline 演示](demo/poster.jpg)](https://github.com/Zuexx/agent-skyline/releases/download/demo/agent-skyline-demo.mp4)
 
 ▶ 演示影片(約 4 分鐘):點上面的圖片,或到 [release 頁面](https://github.com/Zuexx/agent-skyline/releases/tag/demo)下載。
 
@@ -25,7 +25,7 @@ Agent Skyline 把 git repo 畫成一座 3D 城市:資料夾是街區、檔案是
 
 ```bash
 git clone https://github.com/Zuexx/agent-skyline.git
-cd agent-skyline/agent-skyline          # 工具放在同名的子資料夾裡
+cd agent-skyline
 
 cd web && npm install && npm run build  # 1. 建置畫面(只要做一次)
 cd ..
@@ -48,9 +48,9 @@ node server/server.mjs --repo D:/path/to/your/repo   # 2. 啟動伺服器
 
 | 文件 | 內容 |
 |---|---|
-| [`agent-skyline/README.zh-TW.md`](agent-skyline/README.zh-TW.md) | 完整說明:pi、開工作階段時自動啟動、禁區、畫面上每個功能、測試 |
-| [`agent-skyline/NOTES.zh-TW.md`](agent-skyline/NOTES.zh-TW.md) | 構想,以及為什麼做成這樣 |
-| [`agent-skyline/PROGRESS.zh-TW.md`](agent-skyline/PROGRESS.zh-TW.md) | 開發過程:每個決定,和一次事故 |
+| [`docs/guide.zh-TW.md`](docs/guide.zh-TW.md) | 完整說明:pi、開工作階段時自動啟動、禁區、畫面上每個功能、測試 |
+| [`docs/NOTES.zh-TW.md`](docs/NOTES.zh-TW.md) | 構想,以及為什麼做成這樣 |
+| [`docs/PROGRESS.zh-TW.md`](docs/PROGRESS.zh-TW.md) | 開發過程:每個決定,和一次事故 |
 
 原名 CodeCity,因為已經有好幾個專案用了這個名字,所以改名。
 

@@ -7,7 +7,7 @@
 Agent Skyline draws your git repository as a 3D city — folders are districts, files are buildings,
 building height is line count — and lights it up as Claude Code (or pi) reads and writes files.
 
-[![Agent Skyline demo](agent-skyline/demo/poster.jpg)](https://github.com/Zuexx/agent-skyline/releases/download/demo/agent-skyline-demo.mp4)
+[![Agent Skyline demo](demo/poster.jpg)](https://github.com/Zuexx/agent-skyline/releases/download/demo/agent-skyline-demo.mp4)
 
 ▶ Demo video (about 4 minutes): click the image above, or download it from the
 [release page](https://github.com/Zuexx/agent-skyline/releases/tag/demo).
@@ -30,7 +30,7 @@ Requires Node 22+ and git. The watched folder must be a git repository (`git ini
 
 ```bash
 git clone https://github.com/Zuexx/agent-skyline.git
-cd agent-skyline/agent-skyline          # the tool lives in a folder with the same name
+cd agent-skyline
 
 cd web && npm install && npm run build  # 1. build the UI (once)
 cd ..
@@ -55,9 +55,9 @@ No agent handy? `node cli/simulate.mjs` plays a fake session — see the full gu
 
 | Document | What's in it |
 |---|---|
-| [`agent-skyline/README.md`](agent-skyline/README.md) | Full guide: pi, auto-start with each session, locked zones, every UI feature, tests |
-| [`agent-skyline/NOTES.md`](agent-skyline/NOTES.md) | The idea, and why it is shaped this way |
-| [`agent-skyline/PROGRESS.md`](agent-skyline/PROGRESS.md) | How it was built: every decision, and one incident |
+| [`docs/guide.md`](docs/guide.md) | Full guide: pi, auto-start with each session, locked zones, every UI feature, tests |
+| [`docs/NOTES.md`](docs/NOTES.md) | The idea, and why it is shaped this way |
+| [`docs/PROGRESS.md`](docs/PROGRESS.md) | How it was built: every decision, and one incident |
 
 Formerly called CodeCity; renamed because several other projects already use that name.
 

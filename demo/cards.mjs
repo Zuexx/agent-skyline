@@ -60,5 +60,5 @@ export const outro = [
      即時監看 · 禁區 · 範圍檢查 · 依賴道路 · Review 清單 · 框選派工 · 分支比較 · 重播 · 20,000 個檔案 60 fps<br/>
      Live view · locked zones · scope check · dependency roads · review list · box-select tasks · branch diff · replay · 20k files at 60 fps
    </div>`,
-  `<div style="margin-top:30px;font-size:20px;color:#5b6780">agent-skyline/ · README.md · README.zh-TW.md</div>`,
+  `<div style="margin-top:30px;font-size:20px;color:#5b6780">github.com/Zuexx/agent-skyline</div>`,
 ].join("");

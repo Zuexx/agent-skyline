@@ -192,7 +192,7 @@ test("static fallback is 404 text and path traversal cannot escape web/dist", as
     assert.equal(await res.text(), "web UI not built");
 
     // Normalized traversal: the URL parser collapses /../ to /package.json, which stays inside
-    // dist (absent here) -> plain fallback text, never agent-skyline/package.json.
+    // dist (absent here) -> plain fallback text, never the root package.json.
     res = await fetch(base + "/../package.json");
     const body = await res.text();
     assert.ok(!body.includes('"type"'), `traversal leaked package.json: ${body.slice(0, 80)}`);

@@ -1,4 +1,4 @@
-// Zone helpers for the UI. The matcher is the hooks' own (agent-skyline/lib/glob.mjs), so the
+// Zone helpers for the UI. The matcher is the hooks' own (lib/glob.mjs), so the
 // city can never disagree with the guard hook about what is locked.
 import { matchGlob } from "../../../lib/glob.mjs";
 
