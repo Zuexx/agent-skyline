@@ -9,6 +9,7 @@ export default function DemoBridge({ worldOf }) {
   const size = useThree((s) => s.size);
   useEffect(() => {
     window.__agentSkylineDemo = {
+      camera, // for scripts that check camera behavior (zoom, position)
       screenOf(path) {
         const w = worldOf(path);
         if (!w) return null;

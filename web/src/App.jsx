@@ -91,35 +91,85 @@ function FitCamera({ width, depth, nonce }) {
   return null;
 }
 
+// Middle drag: zoom doubles (or halves) every this many CSS pixels.
+const MIDDLE_DRAG_PX_PER_DOUBLING = 300;
+
 /**
- * Two fixes for MapControls on an orthographic camera:
- * - three's middle-button zoom passes clientX as the cursor's y (`_updateZoomParameters(event.
- *   clientX, event.clientX)`), so a middle drag zoomed toward the wrong point and dragged the
- *   camera sideways and down into the city.
- * - Whatever moved it, a camera that ends up inside the city cuts it off at the near plane (a
- *   straight line through the scene). Moving an orthographic camera along its view direction does
- *   not change the picture, so it is pushed back to at least `minDistance` from its target.
+ * Camera fixes on top of drei's MapControls (three-stdlib) with an orthographic camera:
+ * - Middle drag is handled here, not by the controls: they zoom one fixed step per pointer-move
+ *   event, so a real mouse (hundreds of events a second) zoomed wildly, toward the press point,
+ *   and could throw the city off-screen. Here the zoom follows the distance dragged, around the
+ *   center of the view. Chrome's middle-click autoscroll is suppressed on the canvas.
+ * - The view's center (the controls' target) is kept within `maxTargetRadius` of the city's
+ *   center (the origin), so zooming toward the cursor over empty space cannot lose the city.
+ * - A camera that ends up inside the city cuts it off at the near plane (a straight line through
+ *   the scene). Moving an orthographic camera along its view direction does not change the
+ *   picture, so it is pushed back to at least `minDistance` from its target.
  */
-function ControlsFixes({ minDistance }) {
+function ControlsFixes({ minDistance, maxTargetRadius }) {
   const camera = useThree((s) => s.camera);
   const controls = useThree((s) => s.controls);
+  const el = useThree((s) => s.gl.domElement);
   useEffect(() => {
     if (!controls) return;
-    controls._handleMouseDownDolly = function (event) {
-      this._updateZoomParameters(event.clientX, event.clientY);
-      this._dollyStart.set(event.clientX, event.clientY);
-    };
+    controls.mouseButtons.MIDDLE = null;
+
+    const shift = new THREE.Vector3();
     const offset = new THREE.Vector3();
-    const keepOut = () => {
+    const keepInView = () => {
       if (!camera.isOrthographicCamera) return;
-      offset.subVectors(camera.position, controls.target);
-      if (offset.length() >= minDistance) return;
-      camera.position.copy(controls.target).add(offset.setLength(minDistance));
+      // Pull the view's center back toward the city, moving the camera with it.
+      const t = controls.target;
+      const r = Math.hypot(t.x, t.z);
+      if (r > maxTargetRadius) {
+        shift.set(t.x, 0, t.z).multiplyScalar(maxTargetRadius / r - 1);
+        t.add(shift);
+        camera.position.add(shift);
+      }
+      offset.subVectors(camera.position, t);
+      if (offset.length() < minDistance) camera.position.copy(t).add(offset.setLength(minDistance));
       camera.updateMatrixWorld();
     };
-    controls.addEventListener("change", keepOut);
-    return () => controls.removeEventListener("change", keepOut);
-  }, [camera, controls, minDistance]);
+    controls.addEventListener("change", keepInView);
+    keepInView();
+
+    let lastY = null;
+    const onDown = (e) => {
+      if (e.button !== 1) return;
+      e.preventDefault();
+      lastY = e.clientY;
+      el.setPointerCapture?.(e.pointerId);
+      controls.dispatchEvent({ type: "start" });
+    };
+    const onMove = (e) => {
+      if (lastY == null || !camera.isOrthographicCamera) return;
+      const dy = e.clientY - lastY;
+      lastY = e.clientY;
+      if (!dy) return;
+      const zoom = camera.zoom * Math.pow(2, -dy / MIDDLE_DRAG_PX_PER_DOUBLING);
+      camera.zoom = Math.max(controls.minZoom, Math.min(controls.maxZoom, zoom));
+      camera.updateProjectionMatrix();
+      controls.dispatchEvent({ type: "change" });
+    };
+    const onUp = (e) => {
+      if (lastY == null || e.button !== 1) return;
+      lastY = null;
+      el.releasePointerCapture?.(e.pointerId);
+      controls.dispatchEvent({ type: "end" });
+    };
+    const noAutoscroll = (e) => e.button === 1 && e.preventDefault();
+    el.addEventListener("pointerdown", onDown);
+    el.addEventListener("pointermove", onMove);
+    el.addEventListener("pointerup", onUp);
+    el.addEventListener("mousedown", noAutoscroll);
+    return () => {
+      controls.removeEventListener("change", keepInView);
+      el.removeEventListener("pointerdown", onDown);
+      el.removeEventListener("pointermove", onMove);
+      el.removeEventListener("pointerup", onUp);
+      el.removeEventListener("mousedown", noAutoscroll);
+    };
+  }, [camera, controls, el, minDistance, maxTargetRadius]);
   return null;
 }
 
@@ -534,7 +584,10 @@ export default function App() {
         {/* Pan + zoom; rotation clamped above ground. Grabbing the map turns follow mode off.
             The wheel zooms toward the cursor (like a map), about 8% per notch. */}
         <MapControls makeDefault zoomToCursor zoomSpeed={1.6} maxPolarAngle={Math.PI / 2 - 0.05} onStart={() => setFollow(false)} />
-        <ControlsFixes minDistance={new THREE.Vector3(...cameraPosition).length()} />
+        <ControlsFixes
+          minDistance={new THREE.Vector3(...cameraPosition).length()}
+          maxTargetRadius={Math.hypot(Number(view.width) || 0, Number(view.depth) || 0) / 2 || Infinity}
+        />
         <CameraFollow target={latestTarget} enabled={follow} focus={focus} />
         <PickSupport enabled={pickMode} projRef={projRef} />
         <FitCamera width={view.width} depth={view.depth} nonce={fitNonce} />
