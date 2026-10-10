@@ -8,6 +8,10 @@ events into the event log the way the hooks would, and records the screen. When 
 edits a file, the script really edits it in a throwaway clone of forgekit, so the uncommitted diffs
 on screen are real. Videos are git-ignored; `poster.jpg` is a still from it.
 
+The published version adds a voice-over and is attached to the
+[codecity-demo release](https://github.com/Zuexx/codecity/releases/tag/codecity-demo) as
+`codecity-demo.mp4`.
+
 The story: the city, grouping, live activity, dependency roads, locked zones (including a blocked
 shell write), the scope check, the review list with uncommitted diffs, branch comparison,
 box-select task assignment, replay, themes and languages, 20,000 files, and how it works.

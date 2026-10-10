@@ -1,4 +1,4 @@
-# game-view-ideas
+# CodeCity
 
 [English](README.md)
 
@@ -8,9 +8,9 @@
 
 - `codecity/`:把 repo 畫成 3D 城市,即時監督 AI coding agent:讀寫了什麼、用禁區擋下寫入、用 git diff 比較分支。從 `codecity/README.zh-TW.md` 開始讀。
 
-[![CodeCity 演示](codecity/demo/poster.jpg)](https://github.com/Zuexx/game-view-ideas/releases/download/codecity-demo/codecity-demo_vo.mp4)
+[![CodeCity 演示](codecity/demo/poster.jpg)](https://github.com/Zuexx/codecity/releases/download/codecity-demo/codecity-demo.mp4)
 
-有配音的演示影片(約 4 分鐘):點圖片,或到 [release](https://github.com/Zuexx/game-view-ideas/releases/tag/codecity-demo) 下載。
+有配音的演示影片(約 4 分鐘):點圖片,或到 [release](https://github.com/Zuexx/codecity/releases/tag/codecity-demo) 下載。
 
 ## 慣例
 

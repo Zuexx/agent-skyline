@@ -1,4 +1,4 @@
-# game-view-ideas
+# CodeCity
 
 [繁體中文](README.zh-TW.md)
 
@@ -11,10 +11,10 @@ built into a working tool.
   write, locked zones that block writes, and branch comparison by git diff. Start with
   `codecity/README.md`.
 
-[![CodeCity demo](codecity/demo/poster.jpg)](https://github.com/Zuexx/game-view-ideas/releases/download/codecity-demo/codecity-demo_vo.mp4)
+[![CodeCity demo](codecity/demo/poster.jpg)](https://github.com/Zuexx/codecity/releases/download/codecity-demo/codecity-demo.mp4)
 
 Demo video with voice-over (about 4 minutes): click the image, or see the
-[release](https://github.com/Zuexx/game-view-ideas/releases/tag/codecity-demo).
+[release](https://github.com/Zuexx/codecity/releases/tag/codecity-demo).
 
 ## Conventions
 

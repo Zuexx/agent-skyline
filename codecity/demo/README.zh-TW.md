@@ -4,6 +4,8 @@
 
 `codecity-demo.mp4`(3 分 55 秒、1080p、30 fps、繁中與英文字幕、無配音)是錄**真正在運作的 App**,不是模擬畫面:腳本在 Chrome 裡操作 CodeCity,像 hook 一樣把劇本事件寫進事件紀錄,同時錄下畫面。劇本裡的 agent 改檔時,腳本會在 forgekit 的拋棄式 clone 裡真的改那個檔案,所以畫面上未 commit 的 diff 是真的。影片檔不進版控;`poster.jpg` 是影片中的一格。
 
+公開的版本另外加上配音,以 `codecity-demo.mp4` 放在 [codecity-demo release](https://github.com/Zuexx/codecity/releases/tag/codecity-demo)。
+
 內容依序:城市、分組、即時動態、依賴道路、禁區(包括被擋下的 shell 寫入)、範圍檢查、review 清單和未 commit 的 diff、比較分支、框選派工、重播、主題和語言、2 萬個檔案、運作原理。
 
 ## 怎麼做的
