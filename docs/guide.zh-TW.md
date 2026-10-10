@@ -15,16 +15,24 @@ Agent Skyline 把 git repo 畫成 3D 城市:資料夾是街區、檔案是大樓
 
 ## 快速開始
 
-需要 Node 22 以上和 git。以下指令都在 repo 根目錄執行。
+需要 Node 22 以上和 git。在 Agent Skyline 資料夾執行一次 `npm link`,之後在任何 git repo 裡:
+
+```bash
+skyline                 # 把這個 repo 接上 Claude Code,並打開城市
+skyline off             # 取消上面的設定,並關掉城市
+skyline status          # 列出正在跑的城市
+```
+
+`skyline` 第一次執行時會建置畫面,把下面的 Claude Code hook(含自動啟動)加進 `<repo>/.claude/settings.local.json`,確保 git 會忽略這個檔案,為這個 repo 啟動伺服器(已經在跑就沿用),然後打開瀏覽器。選項:`[<資料夾>]`(指定目前資料夾以外的 repo)、`--port <n>`、`--no-open`。伺服器只綁 127.0.0.1。
+
+想自己一步步來:
 
 ```bash
 cd web && npm install && npm run build                  # 建置畫面(只要做一次)
 cd .. && node server/server.mjs --repo D:/path/to/repo  # 啟動伺服器
 ```
 
-打開 http://127.0.0.1:4477 。伺服器只綁 127.0.0.1。
-
-選項:`--port <n>`、`--no-watch`(關閉檔案監看)。
+然後打開 http://127.0.0.1:4477 。伺服器選項:`--port <n>`、`--no-watch`(關閉檔案監看)。
 
 ### 可以監看哪些資料夾
 
@@ -34,12 +42,14 @@ cd .. && node server/server.mjs --repo D:/path/to/repo  # 啟動伺服器
 
 ### Claude Code
 
+`skyline` 會幫你做好。手動的話:
+
 ```bash
 node cli/install-hooks.mjs D:/path/to/repo            # 印出要貼的設定
-node cli/install-hooks.mjs D:/path/to/repo --write    # 直接寫入 <repo>/.claude/settings.local.json
+node cli/install-hooks.mjs D:/path/to/repo --write    # 加進 <repo>/.claude/settings.local.json
 ```
 
-請確認目標 repo 的 `.gitignore` 有排除 `.claude/settings.local.json`。之後**新開**的 Claude Code 工作階段才會載入 hook。要停止,刪掉那個檔案即可。
+`--write` 會保留檔案裡原本的其他設定,只替換 Agent Skyline 自己的 hook。請確認目標 repo 的 `.gitignore` 有排除 `.claude/settings.local.json`。之後**新開**的 Claude Code 工作階段才會載入 hook。要停止,執行 `skyline off`(或從檔案裡刪掉這些 hook)。
 
 - `hooks/log-event.mjs`(PostToolUse):每次工具呼叫記一行事件到 `data/events.jsonl`。
 - `hooks/guard.mjs`(PreToolUse):擋下寫進禁區的動作,不論是透過 Edit/Write **還是** shell 指令。

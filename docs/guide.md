@@ -19,16 +19,27 @@ built, every decision and the one incident), [`specs/`](../specs/) (the step-by-
 
 ## Quick start
 
-Requires Node 22+ and git. Run these from the repository root.
+Requires Node 22+ and git. Run `npm link` once in the Agent Skyline folder, then in any git repo:
+
+```bash
+skyline                 # connect this repo to Claude Code and open its city
+skyline off             # undo that and stop the city
+skyline status          # list running cities
+```
+
+`skyline` builds the UI on first use, adds the Claude Code hooks below (with autostart) to
+`<repo>/.claude/settings.local.json`, makes sure git ignores that file, starts a server for the
+repo (or reuses the one already running) and opens the browser. Options: `[<dir>]` (another
+repo than the current folder), `--port <n>`, `--no-open`. The server only listens on 127.0.0.1.
+
+To run the pieces by hand instead:
 
 ```bash
 cd web && npm install && npm run build                  # build the UI once
 cd .. && node server/server.mjs --repo D:/path/to/repo  # start the server
 ```
 
-Open http://127.0.0.1:4477. The server only listens on 127.0.0.1.
-
-Options: `--port <n>`, `--no-watch` (turn off the file watcher).
+Then open http://127.0.0.1:4477. Server options: `--port <n>`, `--no-watch` (turn off the file watcher).
 
 ### Which folders it can watch
 
@@ -44,13 +55,16 @@ exist for JS/TS, Python, Go, Java/Kotlin/Scala, C#, C/C++/Objective-C, Rust, PHP
 
 ### Claude Code
 
+`skyline` does this for you. By hand:
+
 ```bash
 node cli/install-hooks.mjs D:/path/to/repo            # print the settings to paste
-node cli/install-hooks.mjs D:/path/to/repo --write    # write <repo>/.claude/settings.local.json
+node cli/install-hooks.mjs D:/path/to/repo --write    # add them to <repo>/.claude/settings.local.json
 ```
 
-Make sure the target repo git-ignores `.claude/settings.local.json`. Only Claude Code sessions
-started **after** that pick up the hooks. Delete the file to stop.
+`--write` keeps whatever else is in that file and replaces only Agent Skyline's own hooks. Make
+sure the target repo git-ignores `.claude/settings.local.json`. Only Claude Code sessions started
+**after** that pick up the hooks. `skyline off` (or deleting the hooks from the file) stops it.
 
 - `hooks/log-event.mjs` (PostToolUse) appends one event per tool call to `data/events.jsonl`.
 - `hooks/guard.mjs` (PreToolUse) blocks writes into locked zones — through Edit/Write **and**

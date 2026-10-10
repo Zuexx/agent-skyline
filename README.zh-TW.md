@@ -26,21 +26,25 @@ Agent Skyline 把 git repo 畫成一座 3D 城市:資料夾是街區、檔案是
 ```bash
 git clone https://github.com/Zuexx/agent-skyline.git
 cd agent-skyline
-
-cd web && npm install && npm run build  # 1. 建置畫面(只要做一次)
-cd ..
-node server/server.mjs --repo D:/path/to/your/repo   # 2. 啟動伺服器
+npm link        # 只要一次:安裝 `skyline` 指令
 ```
 
-3. 打開 http://127.0.0.1:4477 ,就會看到你的 repo 變成一座城市。
+之後在任何 git repo 裡(`git init` 過就行):
 
-4. 接上 Claude Code,讓城市看得到它在做什麼,也能擋下寫入:
+```bash
+cd D:/path/to/your/repo
+skyline
+```
 
-   ```bash
-   node cli/install-hooks.mjs D:/path/to/your/repo --write
-   ```
+這樣就好了。瀏覽器會打開城市,Claude Code 也接上這個 repo 了:在那裡**新開**一個 Claude Code 工作階段,就能看到它在做什麼。之後這個 repo 的每個 Claude Code 工作階段都會自動帶起城市。第一次執行會順便建置畫面,大約要一分鐘。
 
-   這會寫入 `<你的 repo>/.claude/settings.local.json`,請把這個路徑加進該 repo 的 `.gitignore`。之後**新開**的 Claude Code 工作階段才會載入 hook;刪掉這個檔案就移除了。
+| 指令 | 作用 |
+|---|---|
+| `skyline` | 接上這個 repo 並打開城市。重複執行也沒關係。 |
+| `skyline off` | 解除這個 repo 的連接並關掉城市 |
+| `skyline status` | 列出正在跑的城市 |
+
+`skyline` 把 hook 寫進 `<repo>/.claude/settings.local.json`(檔案裡原本的其他設定會保留),並確保 git 會忽略這個檔案。
 
 手邊沒有 agent?`node cli/simulate.mjs` 可以播放一段模擬的工作,用法見完整說明。
 

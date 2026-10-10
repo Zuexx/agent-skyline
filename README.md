@@ -31,23 +31,29 @@ Requires Node 22+ and git. The watched folder must be a git repository (`git ini
 ```bash
 git clone https://github.com/Zuexx/agent-skyline.git
 cd agent-skyline
-
-cd web && npm install && npm run build  # 1. build the UI (once)
-cd ..
-node server/server.mjs --repo D:/path/to/your/repo   # 2. start the server
+npm link        # once: installs the `skyline` command
 ```
 
-3. Open http://127.0.0.1:4477 — you'll see your repo as a city.
+Then, in any git repository (`git init` is enough):
 
-4. Connect Claude Code so the city sees what it does and can block writes:
+```bash
+cd D:/path/to/your/repo
+skyline
+```
 
-   ```bash
-   node cli/install-hooks.mjs D:/path/to/your/repo --write
-   ```
+That's it. The city opens in your browser, and Claude Code is connected to the repo: start a
+**new** Claude Code session there and you'll see it work. From then on, every Claude Code session
+in that repo starts the city by itself. The first run also builds the UI, which takes about a
+minute.
 
-   This writes `<your repo>/.claude/settings.local.json`; add that path to your repo's
-   `.gitignore`. Start a **new** Claude Code session to load the hooks; delete the file to remove
-   them.
+| Command | What it does |
+|---|---|
+| `skyline` | Connect this repo and open its city. Safe to run again. |
+| `skyline off` | Disconnect this repo and stop its city |
+| `skyline status` | List running cities |
+
+`skyline` writes its hooks into `<repo>/.claude/settings.local.json` (keeping anything else in that
+file) and makes sure git ignores that file.
 
 No agent handy? `node cli/simulate.mjs` plays a fake session — see the full guide.
 

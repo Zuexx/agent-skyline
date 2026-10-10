@@ -1,24 +1,14 @@
-// Stop Agent Skyline servers that the SessionStart hook started, by the PID each one recorded.
-// Never by process name: other Node programs on the machine are left alone.
+// Stop Agent Skyline servers that `skyline` or the SessionStart hook started, by the PID each one
+// recorded. Never by process name: other Node programs on the machine are left alone.
 //
 //   node cli/stop-server.mjs            list recorded servers
 //   node cli/stop-server.mjs <port>     stop the one on that port
 //   node cli/stop-server.mjs --all      stop all of them
 
-import { readdirSync, readFileSync, rmSync } from "node:fs";
-import path from "node:path";
 import { resolveServersDir } from "../lib/paths.mjs";
-import { probe } from "../lib/autostart.mjs";
+import { listServers, stopServer } from "../lib/autostart.mjs";
 
-const dir = resolveServersDir();
-let records = [];
-try {
-  records = readdirSync(dir)
-    .filter((f) => /^\d+\.json$/.test(f))
-    .map((f) => ({ file: path.join(dir, f), ...JSON.parse(readFileSync(path.join(dir, f), "utf8")) }));
-} catch {
-  // no directory yet: nothing was started
-}
+const records = listServers(resolveServersDir());
 
 const arg = process.argv[2];
 if (!arg) {
@@ -33,18 +23,8 @@ if (!targets.length) {
   process.exit(1);
 }
 for (const r of targets) {
-  // Only kill the PID if that port is still an Agent Skyline with that PID: PIDs get reused.
-  const p = await probe(r.port);
-  if (p.health?.pid === r.pid) {
-    try {
-      process.kill(r.pid);
-      console.log(`stopped port ${r.port} (pid ${r.pid})`);
-    } catch (err) {
-      console.error(`could not stop pid ${r.pid}: ${err.message}`);
-      continue;
-    }
-  } else {
-    console.log(`port ${r.port}: not running any more (or the PID belongs to something else); record removed`);
-  }
-  rmSync(r.file, { force: true });
+  const result = await stopServer(r);
+  if (result === "stopped") console.log(`stopped port ${r.port} (pid ${r.pid})`);
+  else if (result === "gone") console.log(`port ${r.port}: not running any more (or the PID belongs to something else); record removed`);
+  else console.error(result);
 }

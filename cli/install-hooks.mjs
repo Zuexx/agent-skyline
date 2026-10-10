@@ -1,7 +1,8 @@
 // Print (or write) the Claude Code hook settings that connect a repo to Agent Skyline.
+// Most people want `skyline` (cli/skyline.mjs) instead, which also starts the city.
 //
 //   node cli/install-hooks.mjs <repo>            print the settings to paste
-//   node cli/install-hooks.mjs <repo> --write    write <repo>/.claude/settings.local.json
+//   node cli/install-hooks.mjs <repo> --write    add them to <repo>/.claude/settings.local.json
 //
 // Options (off by default):
 //   --autostart   also add a SessionStart hook that starts an Agent Skyline server for the repo when a
@@ -9,35 +10,15 @@
 //   --open        with --autostart: open the city in the browser when the hook starts a server
 //   --port <n>    with --autostart: first port to try (default 4477)
 //
-// --write refuses to overwrite an existing settings.local.json (merge by hand instead), and
-// reminds you to make sure the file is git-ignored in that repo.
+// --write keeps everything else already in settings.local.json and replaces only Agent Skyline's
+// own hooks, and reminds you to make sure the file is git-ignored in that repo.
 
-import { existsSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { hookSettings } from "../lib/hookConfig.mjs";
+import { writeRepoHooks } from "../lib/repoSetup.mjs";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const hook = (name) => `node "${path.join(here, "..", "hooks", name).replace(/\\/g, "/")}"`;
-
-/** The hook settings for the given options. */
-export function hookSettings({ autostart = false, open = false, port = null } = {}) {
-  const settings = {
-    hooks: {
-      PreToolUse: [
-        { matcher: "Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell", hooks: [{ type: "command", command: hook("guard.mjs"), timeout: 10 }] },
-      ],
-      PostToolUse: [{ matcher: "*", hooks: [{ type: "command", command: hook("log-event.mjs"), timeout: 10 }] }],
-      // "The agent is done and waiting for you": the city announces it with what the turn changed.
-      Stop: [{ hooks: [{ type: "command", command: hook("log-event.mjs"), timeout: 10 }] }],
-    },
-  };
-  if (autostart) {
-    const extra = `${port ? ` --port ${port}` : ""}${open ? " --open" : ""}`;
-    settings.hooks.SessionStart = [{ hooks: [{ type: "command", command: hook("session-start.mjs") + extra, timeout: 15 }] }];
-  }
-  return settings;
-}
+export { hookSettings };
 
 async function main() {
   const args = process.argv.slice(2);
@@ -49,19 +30,12 @@ async function main() {
     process.exit(1);
   }
   if (opts.open && !opts.autostart) console.error("note: --open only applies with --autostart");
-  const text = JSON.stringify(hookSettings(opts), null, 2) + "\n";
   if (!args.includes("--write")) {
-    console.log(text);
+    console.log(JSON.stringify(hookSettings(opts), null, 2));
     return;
   }
-  const target = path.join(repo, ".claude", "settings.local.json");
-  if (existsSync(target)) {
-    console.error(`${target} already exists; not overwriting. Merge this into it:\n\n${text}`);
-    process.exit(1);
-  }
-  await mkdir(path.dirname(target), { recursive: true });
-  await writeFile(target, text, "utf8");
-  console.log(`wrote ${target}\nMake sure .claude/settings.local.json is git-ignored in that repo.`);
+  const { file } = await writeRepoHooks(repo, hookSettings(opts));
+  console.log(`wrote ${file}\nMake sure .claude/settings.local.json is git-ignored in that repo.`);
 }
 
 // Importable for tests; runs only as a script.

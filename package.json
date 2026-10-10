@@ -1,5 +1,10 @@
 {
+  "name": "agent-skyline",
+  "private": true,
   "type": "module",
+  "bin": {
+    "skyline": "cli/skyline.mjs"
+  },
   "scripts": {
     "test": "node --test \"test/*.test.mjs\""
   }
