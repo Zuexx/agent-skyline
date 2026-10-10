@@ -1,4 +1,4 @@
-// Agent Skyline HTTP entry point: turns a git repo into city layout JSON, streams the event log
+// Agent Skyline HTTP entry point: turns a git repo (or any folder) into city layout JSON, streams the event log
 // live over SSE, and reads/writes the zones file. Zero npm dependencies; listens on
 // 127.0.0.1 only. `createServer` returns an un-listening http.Server so tests can bind port 0.
 
@@ -6,7 +6,7 @@ import http from "node:http";
 import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { scanRepo } from "./scan.mjs";
+import { isWorkTree, scanRepo } from "./scan.mjs";
 import { layout } from "./layout.mjs";
 import { churn, diffFiles, fileDiff, listBranches, refReader, treeFiles, workingChanges, workingFileDiff } from "./git.mjs";
 import { tailJsonl } from "./tail.mjs";
@@ -149,10 +149,12 @@ export function createServer({ repo, logFile, zonesFile, scopeFile = null, webRo
   const repoPath = path.resolve(repo).split(path.sep).join("/");
 
   let depsCache = null;
+  // A plain folder (no git) still gets its city and live activity; the git views come back empty.
+  const git = isWorkTree(repo);
 
   async function getCity(forceRescan) {
     if (cityCache && !forceRescan) return cityCache;
-    const scanned = scanRepo(repo); // throws if `repo` is not a git work tree -> 500 by the router
+    const scanned = scanRepo(repo);
     cityCache = { repo, repoPath, ...layout(scanned.files) };
     depsCache = null; // the file set may have changed
     return cityCache;
@@ -312,7 +314,7 @@ export function createServer({ repo, logFile, zonesFile, scopeFile = null, webRo
         return;
       }
       if (p === "/api/working" && req.method === "GET") {
-        json(res, 200, { files: workingChanges(repo) });
+        json(res, 200, { files: git ? workingChanges(repo) : [] });
         return;
       }
       if (p === "/api/working/file" && req.method === "GET") {
@@ -320,7 +322,7 @@ export function createServer({ repo, logFile, zonesFile, scopeFile = null, webRo
         return;
       }
       if (p === "/api/churn" && req.method === "GET") {
-        json(res, 200, churn(repo));
+        json(res, 200, git ? churn(repo) : { days: 90, commits: {} });
         return;
       }
       if (p === "/api/deps" && req.method === "GET") {
@@ -332,7 +334,7 @@ export function createServer({ repo, logFile, zonesFile, scopeFile = null, webRo
         return;
       }
       if (p === "/api/branches" && req.method === "GET") {
-        json(res, 200, listBranches(repo));
+        json(res, 200, git ? listBranches(repo) : { current: null, branches: [] });
         return;
       }
       if (p === "/api/diff" && req.method === "GET") {

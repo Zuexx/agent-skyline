@@ -6,7 +6,7 @@ import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { hasHooks, hookSettings, mergeHooks, removeHooks } from "../lib/hookConfig.mjs";
-import { ensureGitignored, removeRepoHooks, repoRoot, writeRepoHooks } from "../lib/repoSetup.mjs";
+import { ensureGitignored, projectRoot, removeRepoHooks, repoRoot, writeRepoHooks } from "../lib/repoSetup.mjs";
 
 const other = { matcher: "Bash", hooks: [{ type: "command", command: "node my-own-hook.mjs" }] };
 
@@ -76,4 +76,12 @@ test("a non-repo folder has no root", async (t) => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "agent-skyline-norepo-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
   assert.equal(repoRoot(dir), null);
+});
+
+test("a non-repo folder is connected as itself, with no .gitignore written", async (t) => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "agent-skyline-norepo-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  assert.equal(projectRoot(dir), path.resolve(dir));
+  assert.equal(await ensureGitignored(dir), false);
+  assert.equal(existsSync(path.join(dir, ".gitignore")), false);
 });

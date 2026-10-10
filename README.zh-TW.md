@@ -21,7 +21,7 @@ Agent Skyline 把 git repo 畫成一座 3D 城市:資料夾是街區、檔案是
 
 ## 快速開始
 
-需要 Node 22 以上和 git。要看的資料夾必須是 git repo(`git init` 一次就好)。
+需要 Node 22 以上和 git。任何資料夾都可以;是 git repo 的話,另外還有分支比較和 diff。
 
 ```bash
 git clone https://github.com/Zuexx/agent-skyline.git
@@ -29,7 +29,7 @@ cd agent-skyline
 npm link        # 只要一次:安裝 `skyline` 指令
 ```
 
-之後在任何 git repo 裡(`git init` 過就行):
+之後在任何 repo 或資料夾裡:
 
 ```bash
 cd D:/path/to/your/repo

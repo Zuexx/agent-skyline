@@ -96,3 +96,7 @@ test("a write an agent's hook already logged is not logged again by the watcher"
   const evs = await events(logFile);
   assert.deepEqual(evs.map((e) => e.source), ["claude-code"]);
 });
+
+test("notIgnored outside git drops paths in skipped folders", () => {
+  assert.deepEqual(notIgnored("unused", ["src/a.py", "node_modules/x/y.js", "a/__pycache__/m.pyc", ".venv/z", ".env"], false), ["src/a.py", ".env"]);
+});

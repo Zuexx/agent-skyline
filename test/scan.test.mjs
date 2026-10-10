@@ -93,3 +93,21 @@ test("scanRepo counts an empty file as 0 lines", async (t) => {
     assert.deepEqual(result.files, [{ path: "empty.txt", lines: 0 }]);
   });
 });
+
+test("scanRepo walks a folder that is not a git repo, skipping dependency and hidden folders", async (t) => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "agent-skyline-scan-plain-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  await writeFile(path.join(dir, "main.py"), "a\nb\n");
+  await mkdir(path.join(dir, "deliver", "comfy"), { recursive: true });
+  await writeFile(path.join(dir, "deliver", "comfy", "pixelize.py"), "x\n");
+  for (const skip of ["node_modules", "__pycache__", ".venv"]) {
+    await mkdir(path.join(dir, skip));
+    await writeFile(path.join(dir, skip, "junk.js"), "j\n");
+  }
+
+  const result = scanRepo(dir);
+  assert.deepEqual(result.files, [
+    { path: "deliver/comfy/pixelize.py", lines: 1 },
+    { path: "main.py", lines: 2 },
+  ]);
+});

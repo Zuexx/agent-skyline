@@ -26,7 +26,7 @@ It runs on your machine only (the server listens on 127.0.0.1) and works with **
 
 ## Quick start
 
-Requires Node 22+ and git. The watched folder must be a git repository (`git init` is enough).
+Requires Node 22+ and git. Any folder works; a git repository also gets branch comparison and diffs.
 
 ```bash
 git clone https://github.com/Zuexx/agent-skyline.git
@@ -34,7 +34,7 @@ cd agent-skyline
 npm link        # once: installs the `skyline` command
 ```
 
-Then, in any git repository (`git init` is enough):
+Then, in any repository or folder:
 
 ```bash
 cd D:/path/to/your/repo

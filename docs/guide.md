@@ -46,8 +46,10 @@ Then open http://127.0.0.1:4477. Server options: `--port <n>`, `--no-watch` (tur
 Any folder that is a **git repository**, code or not: notes, docs, a writing project, data files
 all work. Every file is a building and its height is its line count (binary files are flat).
 Files git ignores (`.gitignore`) are left out; new files show up before anyone runs `git add`.
-A folder that is not a repository yet only needs `git init` (no commit required). Git is what
-gives the city its file list, branch comparison, uncommitted diffs and history. Dependency roads
+A folder that is not a repository works too: its files are read from disk, skipping hidden
+folders, `node_modules`, `__pycache__`, `venv`/`env`, `site-packages` and `python_embeded`, up to
+20,000 files. Without git there is no branch comparison, no uncommitted diff and no history;
+`git init` (no commit required) adds them. Dependency roads
 exist for JS/TS, Python, Go, Java/Kotlin/Scala, C#, C/C++/Objective-C, Rust, PHP, Ruby and Swift
 (see [Dependency roads](#dependency-roads)).
 

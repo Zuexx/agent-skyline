@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// `skyline`: the one command to remember. Run it inside any git repo.
+// `skyline`: the one command to remember. Run it inside any git repo, or any folder.
 //
 //   skyline [<dir>] [--port <n>] [--no-open]   connect this repo and open its city
 //   skyline off [<dir>]                         disconnect this repo and stop its server
@@ -11,13 +11,13 @@
 // Install once with `npm link` in the Agent Skyline folder.
 
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ensureServer, listServers, openBrowser, probe, serversFor, stopServer } from "../lib/autostart.mjs";
 import { hookSettings } from "../lib/hookConfig.mjs";
 import { resolveServersDir } from "../lib/paths.mjs";
-import { ensureGitignored, removeRepoHooks, repoRoot, SETTINGS_REL, writeRepoHooks } from "../lib/repoSetup.mjs";
+import { ensureGitignored, projectRoot, removeRepoHooks, SETTINGS_REL, writeRepoHooks } from "../lib/repoSetup.mjs";
 
 const webDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "web");
 const USAGE = `usage:
@@ -30,10 +30,11 @@ function die(message) {
   process.exit(1);
 }
 
+// The git work tree containing `dir`; outside git, `dir` itself (its city has no branch views).
 function findRepo(dir) {
-  const root = repoRoot(path.resolve(dir ?? "."));
-  if (!root) die(`${path.resolve(dir ?? ".")} is not inside a git repository (run \`git init\` there first)`);
-  return root;
+  const abs = path.resolve(dir ?? ".");
+  if (!statSync(abs, { throwIfNoEntry: false })?.isDirectory()) die(`${abs} is not a folder`);
+  return projectRoot(abs);
 }
 
 function buildWebOnce() {

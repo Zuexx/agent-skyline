@@ -4,7 +4,8 @@
 //
 // Three filters keep it quiet:
 // - a notification without a content change (a read, on Windows) is dropped (see contentChanged);
-// - git-ignored paths (bin/, obj/, node_modules/, build output) are dropped via `git check-ignore`;
+// - git-ignored paths (bin/, obj/, node_modules/, build output) are dropped via `git check-ignore`
+//   (outside git: paths in the folders the scan skips, see skippedPath);
 // - a change that an agent's hook already logged (same path, any non-watcher source, within the
 //   settle window) is not logged twice.
 
@@ -13,14 +14,16 @@ import { statSync, watch } from "node:fs";
 import { appendFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { rootKey } from "../lib/normalize.mjs";
+import { isWorkTree, skippedPath } from "./scan.mjs";
 import { tailJsonl } from "./tail.mjs";
 
 const SETTLE_MS = 1500; // wait this long after a change before deciding to log it
 const MTIME_SLACK_MS = 3000; // a write's mtime can trail its notification slightly (clock, buffering)
 
 /** Repo-relative paths (from `paths`) that git does not ignore. One git process per batch. */
-export function notIgnored(repo, paths) {
+export function notIgnored(repo, paths, git = true) {
   if (!paths.length) return [];
+  if (!git) return paths.filter((p) => !skippedPath(p));
   let ignored = "";
   try {
     ignored = execFileSync("git", ["check-ignore", "--stdin", "-z"], {
@@ -44,6 +47,7 @@ export function notIgnored(repo, paths) {
  */
 export function startWatcher({ repo, logFile, settleMs = SETTLE_MS }) {
   const root = rootKey(path.resolve(repo));
+  const git = isWorkTree(repo);
   // If the event log lives inside the watched repo, its own appends must not be reported.
   const logRel = path.relative(path.resolve(repo), path.resolve(logFile)).replace(/\\/g, "/");
   const pending = new Map(); // relPath -> first-seen ms
@@ -89,7 +93,7 @@ export function startWatcher({ repo, logFile, settleMs = SETTLE_MS }) {
     const ready = [...pending].filter(([, t]) => now - t >= settleMs);
     for (const [p] of ready) pending.delete(p);
     const changed = ready.filter(([p, seen]) => contentChanged(p, seen)).map(([p]) => p);
-    const fresh = notIgnored(repo, changed).filter((p) => !(now - (hookWrites.get(p) ?? 0) < settleMs * 2));
+    const fresh = notIgnored(repo, changed, git).filter((p) => !(now - (hookWrites.get(p) ?? 0) < settleMs * 2));
     if (fresh.length) {
       const lines = fresh.map((p) =>
         JSON.stringify({

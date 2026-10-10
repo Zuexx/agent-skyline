@@ -36,7 +36,7 @@ cd .. && node server/server.mjs --repo D:/path/to/repo  # 啟動伺服器
 
 ### 可以監看哪些資料夾
 
-任何 **git repo** 都可以,不一定是程式碼:筆記、文件、寫作專案、資料檔都行。每個檔案是一棟大樓,高度是行數(二進位檔是平的)。被 `.gitignore` 排除的檔案不顯示;新建的檔案不用 `git add` 就會出現。還不是 repo 的資料夾,只要 `git init` 一次就好(不需要 commit)。檔案清單、分支比較、未 commit 的 diff 和歷史都靠 git。依賴道路支援 JS/TS、Python、Go、Java/Kotlin/Scala、C#、C/C++/Objective-C、Rust、PHP、Ruby 和 Swift(見[依賴道路](#依賴道路))。
+任何 **git repo** 都可以,不一定是程式碼:筆記、文件、寫作專案、資料檔都行。每個檔案是一棟大樓,高度是行數(二進位檔是平的)。被 `.gitignore` 排除的檔案不顯示;新建的檔案不用 `git add` 就會出現。不是 repo 的資料夾也行:檔案直接從磁碟讀,略過隱藏資料夾、`node_modules`、`__pycache__`、`venv`/`env`、`site-packages` 和 `python_embeded`,最多 20,000 個檔案。沒有 git 就沒有分支比較、未 commit 的 diff 和歷史;`git init` 一次(不需要 commit)就會有。依賴道路支援 JS/TS、Python、Go、Java/Kotlin/Scala、C#、C/C++/Objective-C、Rust、PHP、Ruby 和 Swift(見[依賴道路](#依賴道路))。
 
 ## 接上 agent
 
