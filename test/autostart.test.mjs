@@ -7,6 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { hookSettings } from "../cli/install-hooks.mjs";
 import { probe } from "../lib/autostart.mjs";
+import { writeRepoHooks } from "../lib/repoSetup.mjs";
 import { rootKey } from "../lib/normalize.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -62,6 +63,8 @@ test("the session-start hook starts one server per repo and reuses it", { timeou
     await rm(work, { recursive: true, force: true });
   });
   const base = await freePorts();
+  // Connected repos: the hook only starts a server while its SessionStart entry is in a settings file.
+  for (const repo of [repoA, repoB]) await writeRepoHooks(repo, hookSettings({ autostart: true, port: base }));
 
   assert.equal(runHook(repoA, base, env), ""); // nothing on stdout: it would land in Claude's context
   const a = await probe(base);

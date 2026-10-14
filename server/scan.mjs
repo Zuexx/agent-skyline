@@ -25,7 +25,7 @@ export function skippedPath(rel) {
 /** True when `dir` is inside a git work tree. */
 export function isWorkTree(dir) {
   try {
-    return execFileSync("git", ["rev-parse", "--is-inside-work-tree"], { cwd: dir, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim() === "true";
+    return execFileSync("git", ["rev-parse", "--is-inside-work-tree"], { cwd: dir, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], windowsHide: true }).trim() === "true";
   } catch {
     return false; // not a repo, or git is not installed
   }
@@ -57,6 +57,7 @@ function gitPaths(root) {
     cwd: root,
     encoding: "buffer",
     maxBuffer: 256 * 1024 * 1024,
+    windowsHide: true,
   });
 
   // -z output is NUL-separated; split manually so paths with any byte survive.

@@ -5,7 +5,7 @@
 
 import { appendFile, mkdir } from "node:fs/promises";
 import path from "node:path";
-import { normalize } from "../lib/normalize.mjs";
+import { hookEvent, rootArg } from "../lib/hookRoot.mjs";
 import { resolveLogFile } from "../lib/paths.mjs";
 
 async function readStdin() {
@@ -32,7 +32,8 @@ async function main() {
     fail(`invalid JSON on stdin: ${err.message}`);
     return;
   }
-  const event = normalize(payload, new Date(), process.env.CLAUDE_PROJECT_DIR);
+  // --root: the repo `skyline` connected (and serves); without it, the session's project dir.
+  const event = hookEvent(payload, new Date(), { root: rootArg(process.argv.slice(2)), projectDir: process.env.CLAUDE_PROJECT_DIR });
   const file = resolveLogFile();
   try {
     await mkdir(path.dirname(file), { recursive: true });

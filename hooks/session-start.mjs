@@ -9,6 +9,8 @@
 // stdout would be added to Claude's context); problems go to stderr.
 
 import { ensureServer, openBrowser } from "../lib/autostart.mjs";
+import { autostartConfigured, settingsFiles } from "../lib/connected.mjs";
+import { rootArg } from "../lib/hookRoot.mjs";
 import { resolveServersDir } from "../lib/paths.mjs";
 
 async function readStdin() {
@@ -38,9 +40,15 @@ async function main() {
   } catch {
     // no usable payload: fall back to the project dir
   }
-  const repo = process.env.CLAUDE_PROJECT_DIR || payload.cwd;
+  // --root: the repo `skyline` connected, so a session started in a subfolder reuses its server
+  // instead of starting a second one for the subfolder.
+  const repo = rootArg(args) || process.env.CLAUDE_PROJECT_DIR || payload.cwd;
   if (!repo) return fail("no project directory");
   if (!Number.isInteger(basePort) || basePort <= 0) return fail(`bad --port ${args[portArg + 1]}`);
+
+  // A session opened before `skyline off` still runs this hook from its startup snapshot: once the
+  // hook is gone from every settings file, start nothing.
+  if (!autostartConfigured(settingsFiles([repo, process.env.CLAUDE_PROJECT_DIR, payload.cwd]), repo)) return;
 
   const server = await ensureServer({ repo, basePort, serversDir: resolveServersDir() });
   if (!server) return fail(`ports ${basePort}-${basePort + 9} are all taken`);

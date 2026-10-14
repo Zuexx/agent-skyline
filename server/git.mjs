@@ -26,7 +26,8 @@ export function isValidRef(ref) {
 }
 
 function git(root, args, opts = {}) {
-  return execFileSync("git", args, { cwd: root, maxBuffer: 256 * 1024 * 1024, ...opts });
+  // windowsHide: the server runs detached with no console, so each git would otherwise open a window.
+  return execFileSync("git", args, { cwd: root, maxBuffer: 256 * 1024 * 1024, windowsHide: true, ...opts });
 }
 
 function requireRef(ref) {

@@ -7,7 +7,7 @@
 
 import { appendFile, mkdir } from "node:fs/promises";
 import path from "node:path";
-import { normalize } from "../lib/normalize.mjs";
+import { hookEvent, rootArg, rootSpellings } from "../lib/hookRoot.mjs";
 import { resolveLogFile, resolveZonesFile } from "../lib/paths.mjs";
 import { loadZones, decide, decideCommand } from "../lib/zones.mjs";
 
@@ -26,6 +26,18 @@ function fail(message) {
   }
 }
 
+// decideCommand against the root and, when the session's folder is another spelling of it (symlink,
+// junction), against that spelling too: `echo > a.cs` run in <alias>/api is <alias>/api/a.cs.
+function decideShell(command, cwd, root, zones) {
+  const paths = new Set();
+  for (const r of rootSpellings(root, cwd)) {
+    const d = decideCommand(command, cwd, r, zones);
+    if (!d.allow) return d;
+    for (const p of d.paths) paths.add(p);
+  }
+  return { allow: true, paths: [...paths] };
+}
+
 async function main() {
   const raw = await readStdin();
   let payload;
@@ -35,13 +47,14 @@ async function main() {
     fail(`invalid JSON on stdin: ${err.message}`);
     return;
   }
-  const event = normalize(payload, new Date(), process.env.CLAUDE_PROJECT_DIR);
+  const root = rootArg(process.argv.slice(2)); // the repo `skyline` connected, see lib/hookRoot.mjs
+  const event = hookEvent(payload, new Date(), { root, projectDir: process.env.CLAUDE_PROJECT_DIR });
   const zones = await loadZones(resolveZonesFile());
   // Shell commands can write too (`echo > file`, `sed -i`, `rm`...): an agent blocked on Edit was
   // seen switching to exactly that. Check the full command, not the truncated event detail.
   const command = event.kind === "exec" ? payload?.tool_input?.command : null;
   const decision = command
-    ? decideCommand(command, payload.cwd, process.env.CLAUDE_PROJECT_DIR || payload.cwd, zones)
+    ? decideShell(command, payload.cwd, root || process.env.CLAUDE_PROJECT_DIR || payload.cwd, zones)
     : decide(event, zones);
   if (decision.allow) return;
   if (command) event.paths = decision.paths;

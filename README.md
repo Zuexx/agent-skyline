@@ -55,6 +55,11 @@ minute.
 `skyline` writes its hooks into `<repo>/.claude/settings.local.json` (keeping anything else in that
 file) and makes sure git ignores that file.
 
+To remove Agent Skyline, run `skyline off` in each connected repo **before** deleting the folder or
+running `npm unlink`: deleting it does not stop a running city or remove the hooks. `skyline off`
+lists any Agent Skyline hooks left in files it does not edit (such as `~/.claude/settings.json`) and
+exits with an error until they are gone; restart open Claude Code sessions afterwards.
+
 No agent handy? `node cli/simulate.mjs` plays a fake session — see the full guide.
 
 ## Learn more

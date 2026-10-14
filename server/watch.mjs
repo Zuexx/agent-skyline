@@ -30,6 +30,7 @@ export function notIgnored(repo, paths, git = true) {
       cwd: repo,
       input: paths.join("\0") + "\0",
       encoding: "utf8",
+      windowsHide: true, // the server has no console on Windows: without this every batch opens a git window
       maxBuffer: 64 * 1024 * 1024, // a branch switch in a big repo can touch thousands of paths at once
     });
   } catch (err) {

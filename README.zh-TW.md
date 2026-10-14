@@ -46,6 +46,8 @@ skyline
 
 `skyline` 把 hook 寫進 `<repo>/.claude/settings.local.json`(檔案裡原本的其他設定會保留),並確保 git 會忽略這個檔案。
 
+要移除 Agent Skyline,請**先**在每個連接過的 repo 執行 `skyline off`,再刪掉資料夾或執行 `npm unlink`:直接刪除不會關掉正在跑的城市,也不會移除 hook。`skyline off` 會列出它不會修改的檔案(例如 `~/.claude/settings.json`)裡還留著的 Agent Skyline hook,在清掉之前會回報錯誤;之後請重開已經開著的 Claude Code 工作階段。
+
 手邊沒有 agent?`node cli/simulate.mjs` 可以播放一段模擬的工作,用法見完整說明。
 
 ## 延伸閱讀
