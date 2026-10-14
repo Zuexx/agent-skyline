@@ -24,7 +24,7 @@ async function main() {
   const args = process.argv.slice(2);
   const repo = args.find((a, i) => !a.startsWith("--") && args[i - 1] !== "--port");
   const portAt = args.indexOf("--port");
-  // root: events are reported for <repo>, the folder to run the server with (--repo), even from a session started in a subfolder.
+  // root: events are reported for <repo>, the folder to run the server with (--repo), even when the hooks are written into another folder's settings.
   const opts = { autostart: args.includes("--autostart"), open: args.includes("--open"), port: portAt >= 0 ? Number(args[portAt + 1]) : null, root: repo };
   if (!repo || (opts.port != null && !Number.isInteger(opts.port))) {
     console.error("usage: node cli/install-hooks.mjs <repo> [--write] [--autostart [--open] [--port <n>]]");
