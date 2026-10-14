@@ -52,8 +52,8 @@ async function start(dir, { port, open }) {
   const repo = findRepo(dir);
   buildWebOnce();
 
-  // The hooks report to this folder, the one the server below serves, even when a session is
-  // started in a subfolder of it (see connectRepoHooks).
+  // The hooks report to this folder, the one the server below serves. They only load for a session
+  // started in this folder itself (see connectRepoHooks).
   const hooks = await connectRepoHooks(repo, { port });
   const ignored = await ensureGitignored(repo);
   const server = await ensureServer({ repo, basePort: port ?? 4477, serversDir: resolveServersDir() });

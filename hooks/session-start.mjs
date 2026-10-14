@@ -40,8 +40,8 @@ async function main() {
   } catch {
     // no usable payload: fall back to the project dir
   }
-  // --root: the repo `skyline` connected, so a session started in a subfolder reuses its server
-  // instead of starting a second one for the subfolder.
+  // --root: the repo `skyline` connected. Hooks written into a subfolder's settings then reuse the
+  // repo's server instead of starting a second one for the subfolder.
   const repo = rootArg(args) || process.env.CLAUDE_PROJECT_DIR || payload.cwd;
   if (!repo) return fail("no project directory");
   if (!Number.isInteger(basePort) || basePort <= 0) return fail(`bad --port ${args[portArg + 1]}`);

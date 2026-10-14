@@ -1,7 +1,9 @@
-// A Claude Code session started in a subfolder of the repo (or through another spelling of its
-// path) must still reach the city `skyline` opened: the hooks report to the repo root written into
-// their commands (--root), not to the session's folder. Without it the event's root is the
-// subfolder, the server (which serves the git top level) filters it out, and the city stays still.
+// Hooks written into a subfolder's settings.local.json (install-hooks.mjs <sub> --write) must still
+// report to the city `skyline` opened: the hook commands carry the repo root (--root), so the event
+// is not recorded under the subfolder, which the server (serving the git top level) would filter out.
+// These tests run the hook commands by hand. They do not show that Claude Code loads a subfolder's
+// settings when a session starts there. In a manual test, a session started in a subfolder of a
+// connected repo produced no hook events, so `skyline` hooks only reach sessions started in the root.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
