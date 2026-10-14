@@ -40,6 +40,14 @@ const alive = (pid) => {
   }
 };
 
+// A signalled child stays "alive" to kill(pid, 0) until its parent reaps it, which happens on a
+// later event-loop turn. So wait for it to really go instead of checking once.
+const waitGone = async (pid, ms = 3000) => {
+  const until = Date.now() + ms;
+  while (alive(pid) && Date.now() < until) await new Promise((r) => setTimeout(r, 25));
+  return !alive(pid);
+};
+
 // A stand-in for server/server.mjs: answers /api/health as Agent Skyline for `repo`, taking
 // `delayMs` of blocked event loop per request (like a synchronous git call in a big repo).
 const FAKE = `
@@ -83,7 +91,7 @@ test("stopServer stops a busy server instead of dropping its record and leaving 
   const rec = await record(serversDir, server, repo);
 
   assert.equal(await stopServer(rec), "stopped");
-  assert.equal(alive(server.pid), false);
+  assert.equal(await waitGone(server.pid), true);
   assert.equal(existsSync(rec.file), false);
 });
 
@@ -111,8 +119,8 @@ test("stopRepoServers stops an unrecorded server for the repo and one for a subf
 
   const results = await stopRepoServers({ repo, serversDir, ports: [unrecorded.port, other.port] });
   assert.deepEqual(results.map((r) => r.result), ["stopped", "stopped"]);
-  assert.equal(alive(unrecorded.pid), false);
-  assert.equal(alive(sub.pid), false);
+  assert.equal(await waitGone(unrecorded.pid), true);
+  assert.equal(await waitGone(sub.pid), true);
   assert.equal(alive(other.pid), true);
   assert.equal((await probe(other.port)).health?.pid, other.pid);
   assert.deepEqual(listServers(serversDir), []);
@@ -173,7 +181,7 @@ test("disconnectRepo removes the hooks, the .gitignore lines and the servers, an
   assert.equal(out.ignore, true);
   assert.equal(existsSync(path.join(repo, ".gitignore")), false);
   assert.deepEqual(out.servers.map((s) => s.result), ["stopped"]);
-  assert.equal(alive(server.pid), false);
+  assert.equal(await waitGone(server.pid), true);
   assert.deepEqual(await readdir(serversDir), []);
 
   // The user's own settings stay in settings.local.json, so the file must stay ignored.
@@ -352,7 +360,7 @@ test("`skyline off` stops the city, removes the hooks, lists leftovers and fails
   const first = await run();
   assert.match(first.out, /hooks removed from/);
   assert.match(first.out, new RegExp(`stopped the city on port ${server.port}`));
-  assert.equal(alive(server.pid), false);
+  assert.equal(await waitGone(server.pid), true);
   assert.ok(first.out.includes(path.join(home, ".claude", "settings.json")), first.out);
   assert.equal(first.code, 1, "leftover hooks: not done yet");
 

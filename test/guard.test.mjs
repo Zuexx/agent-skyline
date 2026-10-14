@@ -128,7 +128,7 @@ test("guard blocks a Bash command that writes into a locked zone", async () => {
     fs.writeFileSync(zones, JSON.stringify({ locked: ["locked/**"] }));
     const root = pathMod.join(dir, "repo");
     const run = (command) =>
-      spawnSync(process.execPath, [new URL("../hooks/guard.mjs", import.meta.url).pathname.replace(/^\/([a-z]:)/i, "$1")], {
+      spawnSync(process.execPath, [HOOK], {
         input: JSON.stringify({ session_id: "s", cwd: root, hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command } }),
         env: { ...process.env, AGENT_SKYLINE_ZONES: zones, AGENT_SKYLINE_EVENTS: pathMod.join(dir, "e.jsonl"), CLAUDE_PROJECT_DIR: root },
         encoding: "utf8",
