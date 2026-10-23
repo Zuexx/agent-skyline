@@ -3,6 +3,7 @@ import Districts from "./Districts.jsx";
 import Buildings from "./Buildings.jsx";
 import { makeLook } from "./looks.js";
 import Agents from "./Agents.jsx";
+import AgentSprites from "./AgentSprites.jsx";
 import LockCaps from "./LockCaps.jsx";
 import Pulses from "./Pulses.jsx";
 import Roads from "./Roads.jsx";
@@ -34,9 +35,16 @@ export default function City({
   onSelectAgent = null,
   lookStyle = null,
   facing = 0,
+  atlas = null,
+  spriteSpec = null,
+  night = false,
+  characters = null,
 }) {
-  // A sprite theme's building look (city/looks.js), rebuilt when the building set changes.
-  const look = useMemo(() => (lookStyle ? makeLook(lookStyle, city.buildings ?? []) : null), [lookStyle, city.buildings]);
+  // A sprite theme's building look (city/looks.js), rebuilt when the building set or the art changes.
+  const look = useMemo(
+    () => (lookStyle ? makeLook(lookStyle, city.buildings ?? [], { atlas, spec: spriteSpec, night }) : null),
+    [lookStyle, city.buildings, atlas, spriteSpec, night]
+  );
   useEffect(() => () => look?.dispose(), [look]);
   const districtDepthByPath = useMemo(
     () => Object.fromEntries((city.districts ?? []).map((d) => [d.path, d.depth])),
@@ -76,7 +84,7 @@ export default function City({
 
   return (
     <group position={[-(Number(city.width) || 0) / 2, 0, -(Number(city.depth) || 0) / 2]}>
-      <mesh rotation-x={-Math.PI / 2} position={[(Number(city.width) || 0) / 2, 0, (Number(city.depth) || 0) / 2]}>
+      <mesh receiveShadow rotation-x={-Math.PI / 2} position={[(Number(city.width) || 0) / 2, 0, (Number(city.depth) || 0) / 2]}>
         <planeGeometry args={[(Number(city.width) || 0) + GROUND_MARGIN * 2, (Number(city.depth) || 0) + GROUND_MARGIN * 2]} />
         <meshLambertMaterial color={theme.ground} />
       </mesh>
@@ -102,7 +110,19 @@ export default function City({
         facing={look?.billboard ? facing : 0}
       />
       {roads && <Roads path={roads.path} deps={roads.deps} roofs={roofs} />}
-      <Agents agents={activity?.agents} roofs={roofs} selected={selectedAgent} onSelect={onSelectAgent} />
+      {characters?.length ? (
+        <AgentSprites
+          agents={activity?.agents}
+          bases={bases}
+          characters={characters}
+          facing={facing}
+          ppu={spriteSpec?.pixelsPerUnit}
+          selected={selectedAgent}
+          onSelect={onSelectAgent}
+        />
+      ) : (
+        <Agents agents={activity?.agents} roofs={roofs} selected={selectedAgent} onSelect={onSelectAgent} />
+      )}
       <Pulses feed={activity?.feed} bases={bases} ping={ping} />
       {labelBus && <DistrictLabels districts={city.districts} fileCounts={fileCounts} bus={labelBus} />}
     </group>

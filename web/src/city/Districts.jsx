@@ -50,6 +50,7 @@ function Districts({ districts, locked = [], allowed = [], editing = false, onTo
       ref={ref}
       args={[undefined, undefined, list.length]}
       frustumCulled={false}
+      receiveShadow
       onClick={
         editing
           ? (e) => {

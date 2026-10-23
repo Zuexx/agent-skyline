@@ -157,3 +157,19 @@ Not tested: a weaker GPU, and the quality step-down under real load (it never tr
 The tilt-shift at `focusArea 0.45, feather 0.3` is too subtle to see; tune it with the real art.
 Billboards only face the camera at rest; during the 0.35 s turn they show at an angle.
 The choice between the looks is the user's, after seeing both with real art.
+
+### Lit pixel art (same day)
+
+The billboard look with real pixel art (the concept sprites, kept out of the repo), the HD-2D way
+as in the Godot reference (`docs/concept/hd2d_town/town.gd`): a pack lists sprite images with
+optional normal and emission maps (`sprites`), packed into one atlas per map at load time
+(`lib/spriteAtlas.js`); lit through the normal maps by a sun from the screen's upper left that
+turns with the camera, casting shadows along the sprite outlines; emission maps glow at night;
+characters (`characters`, idle / walk / work frames) stand in front of the building their agent
+last touched. 20,000 files, same bench: 239 fps, 50 MB heap, first load 2,001 ms (sprite loading;
+226 ms without art).
+
+A depth-of-field effect focused on the view's centre blurred the whole frame with the orthographic
+camera, so the blur is tilt-shift (stronger: `focusArea 0.3, feather 0.25, kernel large`).
+Not done yet: warning and lock markers are still flat squares; ground is flat colour; a
+perspective camera (part of the HD-2D look in the reference) is untested.

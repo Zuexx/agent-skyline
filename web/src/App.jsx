@@ -5,6 +5,9 @@ import { MapControls, OrthographicCamera } from "@react-three/drei";
 import CameraFollow from "./city/CameraFollow.jsx";
 import CameraRig from "./city/CameraRig.jsx";
 import PostFx from "./city/PostFx.jsx";
+import SpriteLights from "./city/SpriteLights.jsx";
+import { usePackAtlas } from "./lib/usePackAtlas.js";
+import { usePackCharacters } from "./lib/usePackCharacters.js";
 import TurnButtons from "./ui/TurnButtons.jsx";
 import DemoBridge from "./city/DemoBridge.jsx";
 
@@ -246,6 +249,10 @@ export default function App() {
   const lookStyle = pack.renderer === "sprites" ? (pack.buildings?.style ?? "model") : null;
   const [facing, setFacing] = useState(Math.PI / 4); // camera azimuth; starts on the iso diagonal
   const turnRef = useRef(null);
+  const night = variant === "night";
+  const atlas = usePackAtlas(lookStyle === "billboard" ? pack : null, night);
+  const litSprites = Boolean(atlas); // real pixel art: lit through normal maps, casting shadows
+  const characters = usePackCharacters(litSprites ? pack : null);
   setLocale(prefs.locale);
 
   // The working tree's city (what the agent is editing right now).
@@ -641,10 +648,16 @@ export default function App() {
       onPointerUp={boxUp}
     >
       {/* Keyed by theme: materials are created with the palette's colors, so a theme switch rebuilds the scene. */}
-      <Canvas key={theme.name} flat onPointerMissed={() => setSelected(null)}>
+      <Canvas key={theme.name} flat shadows={litSprites} onPointerMissed={() => setSelected(null)}>
         <color attach="background" args={[theme.background]} />
-        <hemisphereLight args={[theme.hemiSky, theme.hemiGround, theme.hemiIntensity]} />
-        <directionalLight position={[-6, 10, 3]} intensity={theme.keyIntensity} color={theme.keyLight} />
+        {litSprites ? (
+          <SpriteLights facing={facing} extent={Math.max(Number(view.width) || 0, Number(view.depth) || 0) / 2} night={night} />
+        ) : (
+          <>
+            <hemisphereLight args={[theme.hemiSky, theme.hemiGround, theme.hemiIntensity]} />
+            <directionalLight position={[-6, 10, 3]} intensity={theme.keyIntensity} color={theme.keyLight} />
+          </>
+        )}
         <OrthographicCamera makeDefault position={cameraPosition} far={cameraFar} />
         {/* Pan + zoom; rotation clamped above ground. Grabbing the map turns follow mode off.
             The wheel zooms toward the cursor (like a map), about 8% per notch. */}
@@ -694,6 +707,10 @@ export default function App() {
           onSelectAgent={pickAgent}
           lookStyle={lookStyle}
           facing={facing}
+          atlas={atlas}
+          spriteSpec={pack.buildings ?? null}
+          night={night}
+          characters={characters}
         />
         <PostFx post={pack.post ?? null} />
       </Canvas>

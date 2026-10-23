@@ -228,6 +228,9 @@ export default function Buildings({ buildings, districtDepthByPath, selected = n
         key={look ? "look" : "box"}
         ref={ref}
         args={[look?.geometry, look?.material, buildings.length]}
+        castShadow={Boolean(look?.depthMaterial)}
+        receiveShadow={Boolean(look?.depthMaterial)}
+        customDepthMaterial={look?.depthMaterial ?? undefined}
         frustumCulled={false}
         onPointerMove={(e) => {
           e.stopPropagation(); // nearest building wins over anything behind it
