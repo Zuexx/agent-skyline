@@ -78,14 +78,17 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     return t;
   }
   const bgFiles = V.background;
-  const [albedoTex, depthTex, readTex, lightTex, haloTex, idTex] = await Promise.all([
+  const [albedoTex, depthTex, readTex, lightTex, haloTex, idTex, ambientTex] = await Promise.all([
     tex(bgFiles.albedo),
     tex(V.depth, { srgb: false, nearest: true }),
     tex(bgFiles.reading, { srgb: false }),
     bgFiles.light ? tex(bgFiles.light) : null,
     bgFiles.halo ? tex(bgFiles.halo, { srgb: false }) : null,
     bgFiles.ids ? tex(bgFiles.ids, { srgb: false, nearest: true }) : null,
+    bgFiles.ambient ? tex(bgFiles.ambient, { srgb: false }) : null,
   ]);
+  // Scenery motion (spec 09 §9): off with "reduce motion" in the OS.
+  const ambientOn = !!ambientTex && !matchMedia?.("(prefers-reduced-motion: reduce)").matches;
   const windowsOn = night && !!idTex;
 
   // ---------------------------------------------------------------- relief from the depth map
@@ -119,9 +122,9 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       gl_Position = projectionMatrix * modelViewMatrix * vec4(cam, 1.0);
     }`;
   const RELIEF_FS = /* glsl */ `
-    uniform sampler2D albedo, lightTex, haloTex, idTex, readTex;
+    uniform sampler2D albedo, lightTex, haloTex, idTex, readTex, ambientTex;
     uniform float win[32];
-    uniform bool windowsOn;
+    uniform bool windowsOn, ambientOn;
     uniform float readEnergy, time;
     varying vec2 vUv;
     varying float vEdge;
@@ -131,7 +134,22 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     }
     void main() {
       if (vEdge > 0.001) discard;
-      vec3 c = texture2D(albedo, vUv).rgb;
+      // Scenery motion from the ambient mask: R fire flicker, G tree sway, B flag wave.
+      vec2 uv = vUv;
+      vec3 am = vec3(0.0);
+      if (ambientOn) {
+        am = texture2D(ambientTex, vUv).rgb;
+        uv.x += am.g * (0.0011 * sin(time * 1.1 + vUv.x * 55.0 + vUv.y * 17.0) + 0.0005 * sin(time * 2.7 + vUv.y * 140.0));
+        uv += am.b * vec2(0.0016 * sin(time * 6.5 - vUv.x * 420.0), 0.0012 * sin(time * 7.3 - vUv.x * 300.0));
+      }
+      vec3 c = texture2D(albedo, uv).rgb;
+      if (am.r > 0.0) {
+        // each fire flickers on its own: the phase comes from where it is
+        float ph = fract(sin(dot(floor(vUv * vec2(96.0, 48.0)), vec2(12.9898, 78.233))) * 43758.5453) * 6.283;
+        float f = 0.5 + 0.22 * sin(time * 11.0 + ph) + 0.16 * sin(time * 23.0 + ph * 1.7) + 0.12 * sin(time * 5.3 + ph * 0.6);
+        c *= 1.0 + am.r * (f - 0.5) * 0.9;
+        c += am.r * vec3(0.10, 0.04, 0.0) * f;
+      }
       if (windowsOn) {
         vec4 id = texture2D(idTex, vUv);
         c += texture2D(lightTex, vUv).rgb * level(id.r);
@@ -184,6 +202,8 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       readTex: { value: readTex },
       win: { value: winLevels },
       windowsOn: { value: windowsOn },
+      ambientTex: { value: ambientTex },
+      ambientOn: { value: ambientOn },
       readEnergy: { value: 0 },
       time: { value: 0 },
     },
@@ -259,9 +279,18 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     scene.add(l);
     return l;
   }
+  const flickering = []; // night lights: fires flicker hard, lamps barely
   if (night) {
     for (const l of V.lights) {
-      omni(new THREE.Color("rgb(255,170,90)"), THREE.MathUtils.clamp(l.size / 60, 0.6, 3), THREE.MathUtils.clamp(l.depth * 0.09, 2, 9), v3(l.pos));
+      const light = omni(new THREE.Color("rgb(255,170,90)"), THREE.MathUtils.clamp(l.size / 60, 0.6, 3), THREE.MathUtils.clamp(l.depth * 0.09, 2, 9), v3(l.pos));
+      flickering.push({ light, base: light.intensity, amp: l.kind === "fire" ? 0.35 : 0.05, ph: Math.random() * 6.283 });
+    }
+  }
+  function flickerLights(t) {
+    if (!ambientOn) return;
+    for (const f of flickering) {
+      const n = Math.sin(t * 11 + f.ph) * 0.45 + Math.sin(t * 23 + f.ph * 1.7) * 0.33 + Math.sin(t * 5.3 + f.ph * 0.6) * 0.22;
+      f.light.intensity = f.base * (1 + f.amp * n);
     }
   }
 
@@ -696,6 +725,57 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     }
   }
 
+  // ---------------------------------------------------------------- chimney smoke (pack "chimneys": painting pixels)
+  const smoke = (() => {
+    const sources = ambientOn ? (V.chimneys ?? []).map((p) => groundAt(p[0], p[1])).filter(Boolean) : [];
+    if (!sources.length) return null;
+    const PER = 18;
+    const n = sources.length * PER;
+    const pos = new Float32Array(n * 3);
+    const life = new Float32Array(n); // 0..1 through each puff's rise
+    const seed = new Float32Array(n);
+    for (let i = 0; i < n; i++) (life[i] = (i % PER) / PER), (seed[i] = Math.random());
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    g.setAttribute("life", new THREE.BufferAttribute(life, 1));
+    g.setAttribute("seed", new THREE.BufferAttribute(seed, 1));
+    const mat = new THREE.ShaderMaterial({
+      uniforms: { tint: { value: night ? new THREE.Color(0.32, 0.34, 0.42) : new THREE.Color(0.92, 0.9, 0.86) }, scale: { value: 1 } },
+      vertexShader: `attribute float life, seed; uniform float scale; varying float vLife, vSeed;
+        void main() { vLife = life; vSeed = seed; vec4 mv = modelViewMatrix * vec4(position, 1.0);
+          gl_PointSize = scale * (0.6 + 2.6 * life) / -mv.z; gl_Position = projectionMatrix * mv; }`,
+      fragmentShader: `uniform vec3 tint; varying float vLife, vSeed;
+        void main() { vec2 p = gl_PointCoord - 0.5; float d = length(p) * 2.0;
+          float a = smoothstep(1.0, 0.2, d) * smoothstep(0.0, 0.12, vLife) * (1.0 - vLife) * 0.42;
+          gl_FragColor = vec4(tint, a); }`,
+      transparent: true,
+      depthWrite: false,
+    });
+    const pts = new THREE.Points(g, mat);
+    pts.frustumCulled = false;
+    pts.renderOrder = 3;
+    scene.add(pts);
+    const RISE = 4.5; // metres over a puff's life
+    const LIFE_S = 5;
+    return {
+      update(dt) {
+        mat.uniforms.scale.value = size().h * PIXEL_RATIO * 0.9;
+        for (let i = 0; i < n; i++) {
+          life[i] += dt / LIFE_S;
+          if (life[i] >= 1) (life[i] -= 1), (seed[i] = Math.random());
+          const src = sources[Math.floor(i / PER)];
+          const t = life[i];
+          // up, drifting with a light wind to the right, wobbling
+          pos[i * 3] = src.x + t * 1.6 + Math.sin(t * 6 + seed[i] * 6.28) * 0.25 * t;
+          pos[i * 3 + 1] = src.y + t * RISE;
+          pos[i * 3 + 2] = src.z + Math.cos(t * 5 + seed[i] * 6.28) * 0.2 * t;
+        }
+        g.attributes.position.needsUpdate = true;
+        g.attributes.life.needsUpdate = true;
+      },
+    };
+  })();
+
   // ---------------------------------------------------------------- construction sites (folders the painting lacks)
   // Until the art pipeline delivers the "construction" sprite, the scaffold stands in.
   const SITE_SPRITE = pack.sprites.construction ? "construction" : "scaffold";
@@ -986,6 +1066,8 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     time.value += dt;
     reliefMat.uniforms.time.value = time.value;
     for (const a of agents.values()) a.update(dt);
+    flickerLights(time.value);
+    smoke?.update(dt);
     for (const o of sites.values()) o.sprite.update(dt);
     placeLabels();
     dofPass.keepSharp([...[...agents.values()].map((a) => a.sprite.mesh.position), ...[...sites.values()].map((o) => o.pos)]);
