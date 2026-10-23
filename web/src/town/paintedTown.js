@@ -372,6 +372,24 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
+  // The ring and shadow under a character: an ellipse facing the camera, standing just in front of
+  // the feet. A flat disc on the painted relief got cut by the ground behind the feet and stretched
+  // on slopes; this keeps one shape everywhere, while things in front (a bush) still cover it.
+  const FOOT_ASPECT = 0.36; // about how a circle on the ground looks from the painting's ~26 degree pitch
+  function footEllipse(width, mat) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(width, width * FOOT_ASPECT), mat);
+    m.renderOrder = 1;
+    scene.add(m);
+    return m;
+  }
+  const toCam = new THREE.Vector3();
+  const camRight = new THREE.Vector3();
+  function placeAtFeet(m, feet, right) {
+    toCam.copy(camera.position).sub(feet).normalize();
+    camRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
+    m.position.copy(feet).addScaledVector(toCam, 2.0).addScaledVector(camRight, right);
+    m.quaternion.copy(camera.quaternion);
+  }
   // MoGe flattens the painted ground, so flat discs are stretched in depth to read as round on screen
   function groundPlane(w, d, mat, pos) {
     const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d).rotateX(-Math.PI / 2), mat);
@@ -542,8 +560,8 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       this.target = this.pos.clone();
       this.path = [];
       this.sprite = new Sprite(this.h);
-      this.shadow = groundPlane(this.h * 0.64, this.h * 0.64 * 2.5, glowMat(new THREE.Color(0, 0, 0), 1, false, 0.45), this.pos);
-      this.ring = groundPlane(this.h * 0.72, this.h * 0.72 * 2.5, glowMat(this.color, night ? 2.5 : 1.6, true), this.pos);
+      this.shadow = footEllipse(this.h * 0.5, glowMat(new THREE.Color(0, 0, 0), 1, false, 0.4));
+      this.ring = footEllipse(this.h * 0.55, glowMat(this.color, night ? 2.5 : 1.6, true));
       this.light = omni(this.color, night ? 0.8 : 0.3, this.h * 1.2, this.pos, 1);
       this.alert = null;
       this.sparks = null;
@@ -591,9 +609,8 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       this.sprite.rate = walking ? WALK_RATE : 1;
       this.sprite.mesh.position.copy(this.pos);
       this.sprite.update(dt);
-      const off = new THREE.Vector3(this.h * 0.25, 0.03, this.h * 0.1);
-      this.shadow.position.copy(this.pos).add(off);
-      this.ring.position.copy(this.pos).add(new THREE.Vector3(0, 0.04, 0));
+      placeAtFeet(this.ring, this.pos, 0);
+      placeAtFeet(this.shadow, this.pos, this.h * 0.06); // the sun is upper left: shadow a little right
       this.light.position.copy(this.pos).add(new THREE.Vector3(0, this.h * 0.3, this.h * 0.4));
 
       const blocked = !walking && this.state.action === "blocked";
