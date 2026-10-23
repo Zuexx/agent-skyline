@@ -598,6 +598,22 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       this.facingLeft = false;
       this.state = a;
     }
+    // Standing about: the plain idle most of the time, now and then another idle clip from the pack
+    // (any sprite named <character>_idle_*), each played through once before the next is picked.
+    idleClip(dt) {
+      const base = `${this.character}_idle`;
+      const pool = Object.keys(pack.sprites).filter((k) => k.startsWith(base + "_"));
+      if (!pool.length) return base;
+      this.idleLeft = (this.idleLeft ?? 0) - dt;
+      if (this.idleLeft <= 0 || !this.idleName) {
+        this.idleName = Math.random() < 0.55 ? base : pool[Math.floor(Math.random() * pool.length)];
+        const m = pack.sprites[this.idleName];
+        const once = m.frames / m.fps;
+        // the plain idle runs a few loops; the others once
+        this.idleLeft = this.idleName === base ? once * (2 + Math.floor(Math.random() * 3)) : once;
+      }
+      return this.idleName;
+    }
     sync(a) {
       this.state = a;
       const target = doorSpot(a.building, a.character, a.action);
@@ -638,7 +654,7 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       }
       const clips = CLIP[this.character] ?? {};
       const clip = walking ? clips.walk : clips[this.state.action];
-      const name = clip ?? `${this.character}_idle`;
+      const name = clip ?? this.idleClip(dt);
       // mirror when the clip faces the other way than the walk (sheet "faces", else known defaults)
       const facesLeft = (pack.sprites[name]?.faces ?? (CLIPS_FACING_LEFT.has(name) ? "left" : "right")) === "left";
       this.sprite.set(name, walking && this.facingLeft !== facesLeft);
