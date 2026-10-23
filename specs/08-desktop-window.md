@@ -88,7 +88,22 @@ the one web code base.
 **Decision (2026-10-23, the user): Tauri**, with the town drawn by the web renderer. Reasons: one code
 base with the rest of Agent Skyline (panels, tracker, file lists stay as they are), 8 MB, about half of
 Godot's memory, and smooth at the display rate in every scene. Godot's prototype stays in
-`proto/town-render/godot/` for reference. Still to test before shipping: click-through.
+`proto/town-render/godot/` for reference.
+
+### Built: `desktop/` (2026-10-23)
+
+`skyline --window` opens the city in the Tauri app in `desktop/` (built with cargo on first use,
+10 MB). Checked on this machine:
+
+- Pin, opacity (30–100 %, slider and Ctrl+Alt+Shift+Up/Down while focused) and close work from the
+  page's title bar; position, size, pin and opacity are saved to `data/repos/<key>/window.json` on close.
+- **Click-through works**: with it on, the window under the cursor is the one behind the city
+  (`WS_EX_TRANSPARENT` set); Ctrl+Alt+Shift+C (global) turns it off again and the page's bar updates.
+  It is only allowed while pinned, so an unpinned window that ignores clicks cannot get lost.
+- The page is served by the local server, so Tauri treats it as remote: the window commands are
+  declared in `build.rs` and allowed for `http://127.0.0.1:*` in `capabilities/default.json`.
+- One window per repo: a second `skyline --window` reports the open one (PID in `window.pid`).
+- Not done yet: `"window": true` in user settings, and an installer.
 
 ## Pieces
 

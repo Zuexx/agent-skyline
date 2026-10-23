@@ -11,6 +11,10 @@ import { usePackAtlas } from "./lib/usePackAtlas.js";
 const PaintedTownView = lazy(() => import("./town/PaintedTownView.jsx"));
 import { usePackCharacters } from "./lib/usePackCharacters.js";
 import TurnButtons from "./ui/TurnButtons.jsx";
+import { BAR_HEIGHT, inWindow } from "./ui/WindowBar.jsx";
+
+// Inside the desktop window the app sits under its title bar; pointer y is measured from the app's top.
+const PAGE_TOP = inWindow ? BAR_HEIGHT : 0;
 import DemoBridge from "./city/DemoBridge.jsx";
 
 // `?demo` exposes a tiny hook for scripted recordings (see city/DemoBridge.jsx).
@@ -589,12 +593,12 @@ export default function App() {
   // The drag lives in a ref (events can outrun renders); the state copy only draws the box.
   const boxDown = (e) => {
     if (!pickMode || e.button !== 0 || e.target.tagName !== "CANVAS") return;
-    dragRef.current = { start: { x: e.clientX, y: e.clientY }, end: { x: e.clientX, y: e.clientY } };
+    dragRef.current = { start: { x: e.clientX, y: e.clientY - PAGE_TOP }, end: { x: e.clientX, y: e.clientY - PAGE_TOP } };
     setDrag(dragRef.current);
   };
   const boxMove = (e) => {
     if (!dragRef.current) return;
-    dragRef.current = { ...dragRef.current, end: { x: e.clientX, y: e.clientY } };
+    dragRef.current = { ...dragRef.current, end: { x: e.clientX, y: e.clientY - PAGE_TOP } };
     setDrag(dragRef.current);
   };
   const boxUp = (e) => {
@@ -602,7 +606,7 @@ export default function App() {
     if (!d) return;
     dragRef.current = null;
     setDrag(null);
-    const rect = rectFrom(d.start, { x: e.clientX, y: e.clientY });
+    const rect = rectFrom(d.start, { x: e.clientX, y: e.clientY - PAGE_TOP });
     if (rect.right - rect.left < 6 && rect.bottom - rect.top < 6) return; // a click, not a box
     justDragged.current = true;
     setTimeout(() => (justDragged.current = false), 80);

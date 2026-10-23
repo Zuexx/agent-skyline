@@ -1,0 +1,18 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "city-page",
+  "description": "The city page, served by the local Agent Skyline server, may call the window commands.",
+  "windows": ["main"],
+  "remote": { "urls": ["http://127.0.0.1:*", "http://localhost:*"] },
+  "permissions": [
+    "core:default",
+    "allow-window-state",
+    "allow-set-pinned",
+    "allow-set-opacity",
+    "allow-set-click-through",
+    "allow-start-drag",
+    "allow-minimize",
+    "allow-toggle-maximize",
+    "allow-close"
+  ]
+}

@@ -18,3 +18,8 @@ proto/town-render/godot/.godot/
 
 # Rust build output
 proto/town-render/tauri/target/
+
+# Desktop window build output
+desktop/target/
+desktop/gen/
+desktop/permissions/

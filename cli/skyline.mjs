@@ -2,6 +2,7 @@
 // `skyline`: the one command to remember. Run it inside any git repo, or any folder.
 //
 //   skyline [<dir>] [--port <n>] [--no-open]   connect this repo and open its city
+//   skyline [<dir>] --window                    same, in its own desktop window instead of a browser tab
 //   skyline off [<dir>] [--port <n>]            disconnect this repo and stop its servers
 //   skyline status                              list running cities
 //
@@ -15,6 +16,7 @@ import { existsSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ensureServer, listServers, openBrowser, probe } from "../lib/autostart.mjs";
+import { openWindow } from "../lib/desktopWindow.mjs";
 import { disconnectRepo } from "../lib/disconnect.mjs";
 import { resolveServersDir } from "../lib/paths.mjs";
 import { connectRepoHooks, ensureGitignored, projectRoot, SETTINGS_REL } from "../lib/repoSetup.mjs";
@@ -22,6 +24,7 @@ import { connectRepoHooks, ensureGitignored, projectRoot, SETTINGS_REL } from ".
 const webDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "web");
 const USAGE = `usage:
   skyline [<dir>] [--port <n>] [--no-open]   connect this repo and open its city
+  skyline [<dir>] --window                    same, in its own desktop window
   skyline off [<dir>] [--port <n>]            disconnect this repo and stop its servers
   skyline status                              list running cities`;
 
@@ -48,7 +51,7 @@ function buildWebOnce() {
   }
 }
 
-async function start(dir, { port, open }) {
+async function start(dir, { port, open, window: inWindow }) {
   const repo = findRepo(dir);
   buildWebOnce();
 
@@ -58,10 +61,12 @@ async function start(dir, { port, open }) {
   const ignored = await ensureGitignored(repo);
   const server = await ensureServer({ repo, basePort: port ?? 4477, serversDir: resolveServersDir() });
   if (!server) die(`ports ${port ?? 4477}-${(port ?? 4477) + 9} are all taken; try --port <n>`);
-  if (open) openBrowser(server.url);
+  const win = inWindow ? openWindow({ repo, url: server.url }) : null;
+  if (open && !inWindow) openBrowser(server.url);
 
   console.log(`${repo}`);
   console.log(`  city    ${server.url}${server.started ? "" : " (already running)"}`);
+  if (win) console.log(`  window  ${win.opened ? "opened" : "already open"} (pid ${win.pid})`);
   if (hooks.changed) {
     console.log(`  hooks   added to ${SETTINGS_REL}`);
     console.log(`          start a NEW Claude Code session here to connect it (already open ones won't see the hooks)`);
@@ -120,7 +125,7 @@ const portAt = args.indexOf("--port");
 const port = portAt >= 0 ? Number(args[portAt + 1]) : null;
 if (port != null && !(Number.isInteger(port) && port > 0)) die(USAGE);
 const positional = args.filter((a, i) => !a.startsWith("--") && !(portAt >= 0 && i === portAt + 1));
-const unknown = args.filter((a) => a.startsWith("-") && !["--port", "--no-open"].includes(a));
+const unknown = args.filter((a) => a.startsWith("-") && !["--port", "--no-open", "--window"].includes(a));
 if (args.includes("--help") || args.includes("-h")) positional.unshift("help");
 else if (unknown.length) die(USAGE);
 
@@ -128,7 +133,7 @@ try {
   if (positional[0] === "off") await off(positional[1], { port });
   else if (positional[0] === "status") await status();
   else if (positional[0] === "help") console.log(USAGE);
-  else await start(positional[0], { port, open: !args.includes("--no-open") });
+  else await start(positional[0], { port, open: !args.includes("--no-open"), window: args.includes("--window") });
 } catch (err) {
   die(err?.message ?? String(err));
 }
