@@ -6,9 +6,9 @@ const KEY = "agent-skyline.prefs";
 function load() {
   try {
     const p = JSON.parse(localStorage.getItem(KEY) || "{}");
-    return { theme: p.theme ?? "auto", locale: p.locale ?? browserLocale(), notify: p.notify === true };
+    return { theme: p.theme ?? "auto", pack: typeof p.pack === "string" ? p.pack : "blocks", locale: p.locale ?? browserLocale(), notify: p.notify === true };
   } catch {
-    return { theme: "auto", locale: browserLocale(), notify: false };
+    return { theme: "auto", pack: "blocks", locale: browserLocale(), notify: false };
   }
 }
 
@@ -21,7 +21,8 @@ function systemTheme() {
 }
 
 /**
- * Per-viewer preferences (theme: auto | night | day, locale), remembered in localStorage.
+ * Per-viewer preferences (theme: auto | night | day, pack: theme pack id, locale), remembered in
+ * localStorage.
  * `resolvedTheme` turns "auto" into night/day from the OS setting and follows its changes.
  */
 export function usePrefs() {
@@ -53,6 +54,7 @@ export function usePrefs() {
     prefs,
     resolvedTheme,
     setTheme: (theme) => setPrefs((p) => ({ ...p, theme })),
+    setPack: (pack) => setPrefs((p) => ({ ...p, pack })),
     setLocale: (locale) => setPrefs((p) => ({ ...p, locale })),
     setNotify: (notify) => setPrefs((p) => ({ ...p, notify })),
   };

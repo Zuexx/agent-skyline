@@ -161,6 +161,19 @@ are recognized by name in `web/src/lib/views.js` (`roleOf`), which is what makes
 | Camera | Left drag pans, right drag rotates, wheel zooms. Map icon: whole city. Target icon: follow the latest action. Double-click a building to fly to it |
 | Theme / language | Night, day, or system; 繁中 or English |
 
+## Theme packs
+
+The city's look comes from a theme pack: a folder with a `theme.json` (and, for later packs,
+images, fonts and sounds). The built-in `Blocks` pack is in `web/public/themes/blocks/`. Your own
+packs go in `~/.agent-skyline/themes/<id>/` (the folder name is the pack id); a pack there
+replaces a built-in pack with the same id. Once there is more than one pack, a menu in the top
+bar switches between them; the night / day button picks the pack's variant.
+
+A pack only has to set the colors it changes; everything else comes from `Blocks`. A broken pack
+is shown with ⚠ in the menu, and the city falls back to `Blocks` with the reason in the top bar.
+Packs are data only: the server serves `.json`, `.png`, `.webp`, `.woff2` and `.ogg` files from
+them and nothing else. The full format is in [`specs/06-themes.md`](../specs/06-themes.md).
+
 ## Tests
 
 ```bash

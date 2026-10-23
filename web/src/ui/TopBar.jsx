@@ -1,6 +1,7 @@
 import { theme } from "../theme.js";
 import { VIEWS } from "../lib/views.js";
-import { LOCALES, t } from "../lib/i18n.js";
+import { getLocale, LOCALES, t } from "../lib/i18n.js";
+import { packName } from "../lib/themePack.js";
 import Icon from "./Icon.jsx";
 
 const THEME_ORDER = ["auto", "night", "day"];
@@ -69,7 +70,7 @@ function Select({ value, onChange, title, children }) {
         border: `1px solid ${theme.panelBorder}`,
         background: theme.panelBg,
         color: theme.text,
-        maxWidth: 220,
+        maxWidth: 150, // a long branch name is cut short; the open list shows it whole
       }}
     >
       {children}
@@ -138,6 +139,10 @@ export default function TopBar({
   zonesStatus,
   zonesError,
   themePref = "auto",
+  packs = [],
+  packId = "blocks",
+  onPack,
+  packError = null,
   onTheme,
   locale,
   onLocale,
@@ -305,6 +310,22 @@ export default function TopBar({
           onClick={onToggleNotify}
         />
         <Divider />
+        {packs.length > 1 && (
+          <select
+            value={packId}
+            onChange={(e) => onPack?.(e.target.value)}
+            title={t("top.packHint")}
+            aria-label={t("top.pack")}
+            style={{ font: "inherit", fontSize: 12, height: 30, maxWidth: 92, borderRadius: 7, border: `1px solid ${theme.panelBorder}`, background: theme.panelBg, color: theme.text }}
+          >
+            {packs.map((p) => (
+              <option key={p.id} value={p.id} disabled={!p.ok} title={p.error ?? ""}>
+                {packName(p, getLocale())}
+                {p.ok ? "" : " ⚠"}
+              </option>
+            ))}
+          </select>
+        )}
         <IconButton
           icon={THEME_ICON[themePref] ?? "monitor"}
           label={t("top.themeTip", { name: t(`theme.${themePref}`) })}
@@ -332,10 +353,11 @@ export default function TopBar({
         </button>
       </span>
 
-      {(zonesStatus === "invalid" || zonesError || compare.error) && (
+      {(zonesStatus === "invalid" || zonesError || compare.error || packError) && (
         <span style={{ flexBasis: "100%", color: theme.blocked, fontSize: 12 }}>
           {zonesStatus === "invalid" && <b>{t("top.zonesInvalid")} </b>}
           {zonesError && t("top.zonesError", { error: zonesError })} {compare.error}
+          {packError && t("top.packError", { id: packId, error: packError })}
         </span>
       )}
     </div>

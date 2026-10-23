@@ -15,6 +15,7 @@ import { prepareRepoData, resolveLogFile, resolveZonesFile } from "../lib/paths.
 import { rootKey } from "../lib/normalize.mjs";
 import { startWatcher } from "./watch.mjs";
 import { buildDeps, packDeps, readsFile } from "./deps.mjs";
+import { listThemes, PACK_TYPES, resolveThemeFile } from "./themes.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const defaultWebRoot = path.join(here, "..", "web", "dist"); // step 4 builds this folder
@@ -133,7 +134,8 @@ async function serveStatic(res, url, distRoot) {
 }
 
 // webRoot is overridable so tests do not depend on whether web/dist has been built.
-export function createServer({ repo, logFile, zonesFile, scopeFile = null, webRoot = defaultWebRoot }) {
+// `themeDirs` ({ builtin, user }) is overridable for the same reason.
+export function createServer({ repo, logFile, zonesFile, scopeFile = null, webRoot = defaultWebRoot, themeDirs = undefined }) {
   // The declared task scope lives next to the zones file unless given (tests pass their own).
   const scopePath = scopeFile ?? path.join(path.dirname(zonesFile), "scope.json");
   const loadScope = async () => {
@@ -363,6 +365,29 @@ export function createServer({ repo, logFile, zonesFile, scopeFile = null, webRo
       }
       if (p === "/api/scope" && req.method === "PUT") {
         handlePutList(req, res, scopePath, "allow", loadScope);
+        return;
+      }
+      if (p === "/api/themes" && req.method === "GET") {
+        json(res, 200, await listThemes(themeDirs));
+        return;
+      }
+      // Theme pack files (server/themes.mjs): the user's packs and the built-in ones, data only.
+      if (p.startsWith("/themes/") && (req.method === "GET" || req.method === "HEAD")) {
+        let rest;
+        try {
+          rest = decodeURIComponent(p.slice("/themes/".length));
+        } catch {
+          json(res, 400, { error: "invalid path" });
+          return;
+        }
+        const slash = rest.indexOf("/");
+        const file = slash > 0 ? await resolveThemeFile(rest.slice(0, slash), rest.slice(slash + 1), themeDirs) : null;
+        if (!file) {
+          json(res, 404, { error: "no such theme file" });
+          return;
+        }
+        res.writeHead(200, { "Content-Type": PACK_TYPES[path.extname(file).toLowerCase()], "Cache-Control": "no-cache" });
+        res.end(req.method === "HEAD" ? undefined : await readFile(file));
         return;
       }
       if (p.startsWith("/api/")) {

@@ -120,6 +120,12 @@ pi --extension D:/path/to/agent-skyline/adapters/pi/agent-skyline.js     # 只�
 | 鏡頭 | 左鍵拖曳平移、右鍵拖曳旋轉、滾輪縮放;地圖 icon 回到全景;準星 icon 跟隨最新動作;雙擊大樓飛過去 |
 | 主題 / 語言 | 夜間、日間、跟隨系統;繁中、English |
 
+## 主題包
+
+城市的外觀來自主題包:一個裝著 `theme.json` 的資料夾(之後的主題包還會有圖片、字型、音效)。內建的「方塊城市」在 `web/public/themes/blocks/`。自己的主題包放在 `~/.agent-skyline/themes/<id>/`(資料夾名稱就是主題包的 id);和內建主題包同 id 時,以你的為準。有兩個以上的主題包時,工具列會出現切換選單;夜間 / 日間按鈕切換的是主題包裡的版本。
+
+主題包只要寫它想改的顏色,其他的沿用「方塊城市」。壞掉的主題包在選單裡會標 ⚠,城市會改用「方塊城市」,並在工具列寫出原因。主題包只能放資料:伺服器只會從裡面送出 `.json`、`.png`、`.webp`、`.woff2`、`.ogg` 檔案。完整格式見 [`specs/06-themes.md`](../specs/06-themes.md)。
+
 ## 測試
 
 ```bash

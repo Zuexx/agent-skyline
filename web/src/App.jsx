@@ -26,6 +26,8 @@ import { useActivity } from "./lib/useActivity.js";
 import { useZones } from "./lib/useZones.js";
 import { useCompare } from "./lib/useCompare.js";
 import { usePrefs } from "./lib/usePrefs.js";
+import { useThemeList, useThemePack } from "./lib/useThemePack.js";
+import { resolvePalette } from "./lib/themePack.js";
 import { useScope } from "./lib/useScope.js";
 import { useAlerts, requestNotify } from "./lib/useAlerts.js";
 import { alertsFrom } from "./lib/alerts.js";
@@ -231,8 +233,12 @@ function Status({ children }) {
 
 export default function App() {
   // Preferences first: theme and language must be applied before anything renders this pass.
-  const { prefs, resolvedTheme, setTheme, setLocale: setLocalePref, setNotify } = usePrefs();
-  applyTheme(resolvedTheme);
+  const { prefs, resolvedTheme, setTheme, setPack, setLocale: setLocalePref, setNotify } = usePrefs();
+  // The theme pack's palette for night or day (a pack with one look ignores the setting).
+  const { pack, error: packError } = useThemePack(prefs.pack);
+  const themePacks = useThemeList();
+  const { palette, variant } = resolvePalette(pack, resolvedTheme);
+  applyTheme(palette, `${pack.id}:${variant}`);
   setLocale(prefs.locale);
 
   // The working tree's city (what the agent is editing right now).
@@ -746,6 +752,10 @@ export default function App() {
         zonesError={zones.error}
         themePref={prefs.theme}
         onTheme={setTheme}
+        packs={themePacks}
+        packId={prefs.pack}
+        onPack={setPack}
+        packError={packError}
         locale={prefs.locale}
         onLocale={setLocalePref}
         pickMode={pickMode}
