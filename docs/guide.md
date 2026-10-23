@@ -68,7 +68,12 @@ node cli/install-hooks.mjs D:/path/to/repo --write    # add them to <repo>/.clau
 sure the target repo git-ignores `.claude/settings.local.json`. Only Claude Code sessions started
 **after** that pick up the hooks. `skyline off` (or deleting the hooks from the file) stops it.
 
-- `hooks/log-event.mjs` (PostToolUse) appends one event per tool call to `data/events.jsonl`.
+- `hooks/log-event.mjs` (PostToolUse) appends one event per tool call to the repo's own log.
+- Each repo has its own folder, `data/repos/<name>-<hash>/`, with `events.jsonl`, `zones.json`
+  (locked zones) and `scope.json` (declared scope), so locking `api/**` in one repo does not lock
+  it in another. A session started in a subfolder uses its repo's folder. On first use the folder
+  takes a copy of the old shared `data/zones.json` and `data/scope.json` and of this repo's events
+  from the old shared `data/events.jsonl`; the shared files themselves are left alone.
 - `hooks/guard.mjs` (PreToolUse) blocks writes into locked zones — through Edit/Write **and**
   through shell commands.
 

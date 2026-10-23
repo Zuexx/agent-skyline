@@ -15,7 +15,7 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { normalize } from "../../lib/normalize.mjs";
-import { resolveLogFile, resolveZonesFile } from "../../lib/paths.mjs";
+import { prepareRepoData, resolveLogFile, resolveZonesFile } from "../../lib/paths.mjs";
 import { decide, decideCommand, loadZones } from "../../lib/zones.mjs";
 
 // pi built-in tool -> the Claude Code tool name normalize() understands.
@@ -45,8 +45,10 @@ export function toPayload(toolName, input, ctx, hookEvent) {
   };
 }
 
-async function append(event) {
-  const file = resolveLogFile();
+// `root` is the session's folder: its repo's log, or the nearest connected parent's (lib/paths.mjs).
+async function append(event, root) {
+  await prepareRepoData(root);
+  const file = resolveLogFile(root);
   await mkdir(path.dirname(file), { recursive: true });
   await appendFile(file, JSON.stringify(event) + "\n", "utf8");
 }
@@ -56,13 +58,18 @@ export default function agentSkyline(pi) {
     const isBash = event.toolName === "bash";
     if (event.toolName !== "write" && event.toolName !== "edit" && !isBash) return undefined;
     const ev = normalize(toPayload(event.toolName, event.input, ctx, "PreToolUse"), new Date(), ctx?.cwd, "pi");
-    const zones = await loadZones(resolveZonesFile());
+    try {
+      await prepareRepoData(ctx?.cwd);
+    } catch {
+      // a missing folder just means no zones yet
+    }
+    const zones = await loadZones(resolveZonesFile(ctx?.cwd));
     // bash can write into a zone just as well as edit can (a blocked model did exactly that).
     const decision = isBash ? decideCommand(event.input?.command, ctx?.cwd, ctx?.cwd, zones) : decide(ev, zones);
     if (decision.allow) return undefined;
     if (isBash) ev.paths = decision.paths;
     try {
-      await append({ ...ev, kind: "blocked", detail: decision.reason });
+      await append({ ...ev, kind: "blocked", detail: decision.reason }, ctx?.cwd);
     } catch {
       // the block stands even if it cannot be logged
     }
@@ -81,7 +88,7 @@ export default function agentSkyline(pi) {
   // The agent finished and is waiting for the person: logged like Claude Code's Stop hook.
   pi.on("agent_end", async (_event, ctx) => {
     try {
-      await append(normalize(toPayload(null, {}, ctx, "Stop"), new Date(), ctx?.cwd, "pi"));
+      await append(normalize(toPayload(null, {}, ctx, "Stop"), new Date(), ctx?.cwd, "pi"), ctx?.cwd);
     } catch {
       // logging is best effort
     }
@@ -93,7 +100,7 @@ export default function agentSkyline(pi) {
     if (event.isError) return;
     try {
       const ev = normalize(toPayload(event.toolName, args, ctx, "PostToolUse"), new Date(), ctx?.cwd, "pi");
-      await append(ev);
+      await append(ev, ctx?.cwd);
     } catch {
       // logging is best effort
     }

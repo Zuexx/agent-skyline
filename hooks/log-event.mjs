@@ -6,7 +6,7 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { hookEvent, rootArg } from "../lib/hookRoot.mjs";
-import { resolveLogFile } from "../lib/paths.mjs";
+import { prepareRepoData, resolveLogFile } from "../lib/paths.mjs";
 
 async function readStdin() {
   let raw = "";
@@ -33,9 +33,11 @@ async function main() {
     return;
   }
   // --root: the repo `skyline` connected (and serves); without it, the session's project dir.
+  const root = rootArg(process.argv.slice(2)) || process.env.CLAUDE_PROJECT_DIR || payload?.cwd || null;
   const event = hookEvent(payload, new Date(), { root: rootArg(process.argv.slice(2)), projectDir: process.env.CLAUDE_PROJECT_DIR });
-  const file = resolveLogFile();
+  const file = resolveLogFile(root);
   try {
+    await prepareRepoData(root);
     await mkdir(path.dirname(file), { recursive: true });
     await appendFile(file, JSON.stringify(event) + "\n", "utf8");
   } catch (err) {

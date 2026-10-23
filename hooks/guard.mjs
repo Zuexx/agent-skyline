@@ -8,7 +8,7 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { hookEvent, rootArg, rootSpellings } from "../lib/hookRoot.mjs";
-import { resolveLogFile, resolveZonesFile } from "../lib/paths.mjs";
+import { prepareRepoData, resolveLogFile, resolveZonesFile } from "../lib/paths.mjs";
 import { loadZones, decide, decideCommand } from "../lib/zones.mjs";
 
 async function readStdin() {
@@ -49,7 +49,14 @@ async function main() {
   }
   const root = rootArg(process.argv.slice(2)); // the repo `skyline` connected, see lib/hookRoot.mjs
   const event = hookEvent(payload, new Date(), { root, projectDir: process.env.CLAUDE_PROJECT_DIR });
-  const zones = await loadZones(resolveZonesFile());
+  // This repo's zones (lib/paths.mjs); the folder is created, and old shared zones carried over, on first use.
+  const dataRoot = root || process.env.CLAUDE_PROJECT_DIR || payload?.cwd || null;
+  try {
+    await prepareRepoData(dataRoot);
+  } catch (err) {
+    fail(`could not prepare data folder: ${err.message}`);
+  }
+  const zones = await loadZones(resolveZonesFile(dataRoot));
   // Shell commands can write too (`echo > file`, `sed -i`, `rm`...): an agent blocked on Edit was
   // seen switching to exactly that. Check the full command, not the truncated event detail.
   const command = event.kind === "exec" ? payload?.tool_input?.command : null;
@@ -72,7 +79,7 @@ async function main() {
 
   // Record the block in the event log; a write failure must not undo the deny.
   const blocked = { ...event, kind: "blocked", detail: decision.reason };
-  const file = resolveLogFile();
+  const file = resolveLogFile(dataRoot);
   try {
     await mkdir(path.dirname(file), { recursive: true });
     await appendFile(file, JSON.stringify(blocked) + "\n", "utf8");

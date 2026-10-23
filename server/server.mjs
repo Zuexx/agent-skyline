@@ -11,7 +11,7 @@ import { layout } from "./layout.mjs";
 import { churn, diffFiles, fileDiff, listBranches, refReader, treeFiles, workingChanges, workingFileDiff } from "./git.mjs";
 import { tailJsonl } from "./tail.mjs";
 import { loadZones } from "../lib/zones.mjs";
-import { resolveLogFile, resolveZonesFile } from "../lib/paths.mjs";
+import { prepareRepoData, resolveLogFile, resolveZonesFile } from "../lib/paths.mjs";
 import { rootKey } from "../lib/normalize.mjs";
 import { startWatcher } from "./watch.mjs";
 import { buildDeps, packDeps, readsFile } from "./deps.mjs";
@@ -406,9 +406,10 @@ if (isMain) {
     console.error("usage: node server/server.mjs --repo <path> [--port 4477] [--no-watch]");
     process.exit(1);
   }
-  const server = createServer({ repo, logFile: resolveLogFile(), zonesFile: resolveZonesFile() });
+  await prepareRepoData(repo); // this repo's own events, zones and scope (lib/paths.mjs)
+  const server = createServer({ repo, logFile: resolveLogFile(repo), zonesFile: resolveZonesFile(repo) });
   // Changes made by agents without hooks (or by hand) still show up, as unattributed writes.
-  if (watchFiles) startWatcher({ repo, logFile: resolveLogFile() });
+  if (watchFiles) startWatcher({ repo, logFile: resolveLogFile(repo) });
   server.listen(port, "127.0.0.1", () => {
     console.log(`agent-skyline: http://127.0.0.1:${port} (repo ${path.resolve(repo)})`);
   });

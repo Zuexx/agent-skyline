@@ -51,7 +51,8 @@ node cli/install-hooks.mjs D:/path/to/repo --write    # 加進 <repo>/.claude/se
 
 `--write` 會保留檔案裡原本的其他設定,只替換 Agent Skyline 自己的 hook。請確認目標 repo 的 `.gitignore` 有排除 `.claude/settings.local.json`。之後**新開**的 Claude Code 工作階段才會載入 hook。要停止,執行 `skyline off`(或從檔案裡刪掉這些 hook)。
 
-- `hooks/log-event.mjs`(PostToolUse):每次工具呼叫記一行事件到 `data/events.jsonl`。
+- `hooks/log-event.mjs`(PostToolUse):每次工具呼叫記一行事件到這個 repo 自己的事件紀錄。
+- 每個 repo 有自己的資料夾 `data/repos/<名稱>-<雜湊>/`,裡面是 `events.jsonl`、`zones.json`(禁區)和 `scope.json`(允許範圍),所以在一個 repo 鎖 `api/**` 不會鎖到別的 repo。在子資料夾開的工作階段用的是它所屬 repo 的資料夾。第一次使用時,會從舊的共用檔案複製一份過來:`data/zones.json`、`data/scope.json`,以及舊 `data/events.jsonl` 裡屬於這個 repo 的事件;舊檔案本身不會被改動。
 - `hooks/guard.mjs`(PreToolUse):擋下寫進禁區的動作,不論是透過 Edit/Write **還是** shell 指令。
 
 **開工作階段時自動帶起城市(選用,預設關閉):**

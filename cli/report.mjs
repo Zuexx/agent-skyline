@@ -1,22 +1,27 @@
 // Summarize the Agent Skyline event log, grouped per session (oldest first).
-// Usage: node cli/report.mjs [--file <path>] [--session <id>]
+// Usage: node cli/report.mjs [--repo <dir>] [--file <path>] [--session <id>]
 
 import { readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { resolveLogFile } from "../lib/paths.mjs";
 
 function parseArgs(argv) {
-  const args = { file: null, session: null };
+  const args = { file: null, session: null, repo: null };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--file" && i + 1 < argv.length) args.file = argv[++i];
     else if (argv[i] === "--session" && i + 1 < argv.length) args.session = argv[++i];
+    else if (argv[i] === "--repo" && i + 1 < argv.length) args.repo = argv[++i];
   }
   return args;
 }
 
-// --file wins over AGENT_SKYLINE_EVENTS, which wins over the default location.
-function resolveReportFile(cliFile) {
+// --file wins over AGENT_SKYLINE_EVENTS, which wins over the repo's log (--repo, else the current
+// folder's when it has one), which wins over the old shared log.
+function resolveReportFile(cliFile, repo) {
   if (typeof cliFile === "string" && cliFile.length > 0) return cliFile;
-  return resolveLogFile();
+  if (repo) return resolveLogFile(repo);
+  const here = resolveLogFile(process.cwd());
+  return existsSync(here) ? here : resolveLogFile();
 }
 
 function loadEvents(file) {
@@ -45,7 +50,7 @@ function byCountDescPathAsc(entries) {
 
 function main() {
   const args = parseArgs(process.argv.slice(2));
-  const events = loadEvents(resolveReportFile(args.file));
+  const events = loadEvents(resolveReportFile(args.file, args.repo));
   if (events === null) {
     console.log("no events");
     return;
