@@ -125,6 +125,7 @@ async function follow() {
   }
 }
 
+let lastReport = "null";
 const TYPES = {
   ".json": "application/json",
   ".webp": "image/webp",
@@ -154,6 +155,18 @@ http
   .createServer((req, res) => {
     const url = new URL(req.url, "http://x");
     res.setHeader("Access-Control-Allow-Origin", "*");
+    if (url.pathname === "/report") {
+      // bench results posted by the page (?report=1), read back by bench.mjs
+      if (req.method === "POST") {
+        let body = "";
+        req.on("data", (d) => (body += d));
+        req.on("end", () => ((lastReport = body), res.writeHead(204).end()));
+      } else {
+        res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+        res.end(lastReport);
+      }
+      return;
+    }
     if (url.pathname === "/state") {
       res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
       res.end(JSON.stringify(state()));

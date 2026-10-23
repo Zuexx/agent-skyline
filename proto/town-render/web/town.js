@@ -37,6 +37,11 @@ renderer.setPixelRatio(1);
 const size = () => (fixedSize ? { w: fixedSize[0], h: fixedSize[1] } : { w: innerWidth, h: innerHeight });
 renderer.setSize(size().w, size().h);
 document.body.appendChild(renderer.domElement);
+// ?opacity=0.85: the page fades itself; over a transparent window (Tauri, Electron) the desktop shows through
+if (q.get("opacity")) {
+  document.documentElement.style.background = document.body.style.background = "transparent";
+  renderer.domElement.style.opacity = q.get("opacity");
+}
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(night ? "rgb(10,16,34)" : "rgb(150,190,230)");
@@ -844,6 +849,8 @@ function frame(now) {
           long_frames: (bench.long ?? []).length,
         };
         console.log("BENCH " + JSON.stringify(window.__bench));
+        // shells that cannot read the page (Tauri without IPC) get the result through the bridge
+        if (q.get("report")) fetch("/report", { method: "POST", body: JSON.stringify(window.__bench) });
       }
     }
     bench.prev = now;

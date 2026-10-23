@@ -15,3 +15,6 @@ waretrack/
 
 # Prototype engine caches
 proto/town-render/godot/.godot/
+
+# Rust build output
+proto/town-render/tauri/target/

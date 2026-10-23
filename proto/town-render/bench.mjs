@@ -14,8 +14,10 @@ const godot = arg("--godot", "D:/GODOT/Godot_v4.7.2-stable_win64_console.exe");
 const seconds = Number(arg("--seconds", 10));
 const only = arg("--only", null);
 const vsync = args.includes("--vsync"); // capped at the display rate: smoothness, not headroom
+const opacity = arg("--opacity", null); // see-through windows (what the user tries); skips the plain web page
 const here = path.dirname(new URL(import.meta.url).pathname.replace(/^\/([a-z]:)/i, "$1"));
-const CASES = [
+const QUICK = process.argv.includes("--quick"); // only the first scene
+const CASES_ALL = [
   { variant: "night", view: "pano", size: [1920, 960] },
   { variant: "night", view: "close", size: [1920, 1080] },
   { variant: "day", view: "pano", size: [1920, 960] },
@@ -58,7 +60,7 @@ async function electronRun(c) {
   const exe = path.join(dir, "node_modules", "electron", "dist", "electron.exe");
   const t0 = Date.now();
   const url = `http://127.0.0.1:4478/?variant=${c.variant}&view=${c.view}&bench=${seconds}&hud=0&size=${c.size.join("x")}`;
-  const p = spawn(exe, [dir, `--url=${url}`, `--size=${c.size.join("x")}`, "--bench", ...(vsync ? [] : ["--uncapped"])], { stdio: ["ignore", "pipe", "pipe"] });
+  const p = spawn(exe, [dir, `--url=${url}`, `--size=${c.size.join("x")}`, "--bench", ...(vsync ? [] : ["--uncapped"]), ...(opacity ? [`--opacity=${opacity}`] : [])], { stdio: ["ignore", "pipe", "pipe"] });
   let out = "";
   p.stdout.on("data", (d) => (out += d));
   p.stderr.on("data", (d) => (out += d));
@@ -70,10 +72,29 @@ async function electronRun(c) {
   return { ...r, wall_s: (Date.now() - t0) / 1000, ...mem };
 }
 
+async function tauriRun(c) {
+  const exe = path.join(here, "tauri", "target", "release", "town-render-tauri.exe");
+  await fetch("http://127.0.0.1:4478/report", { method: "POST", body: "null" });
+  const t0 = Date.now();
+  const url = `http://127.0.0.1:4478/?variant=${c.variant}&view=${c.view}&bench=${seconds}&hud=0&size=${c.size.join("x")}&report=1${opacity ? `&opacity=${opacity}` : ""}`;
+  // WebView2 has no switch to lift the frame cap from the app side; run with the display rate
+  const p = spawn(exe, [`--url=${url}`, `--size=${c.size.join("x")}`, ...(opacity ? ["--transparent"] : [])], { stdio: "ignore", env: { ...process.env, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: vsync ? "" : "--disable-gpu-vsync --disable-frame-rate-limit" } });
+  await new Promise((r) => setTimeout(r, 4000 + 2000 + (seconds * 1000) / 2));
+  // matches the app and its msedgewebview2 processes (their command line names the app)
+  const mem = measure("town-render-tauri");
+  let r = null;
+  for (let i = 0; i < 120 && !r; i++) {
+    r = await (await fetch("http://127.0.0.1:4478/report")).json();
+    if (!r) await new Promise((res) => setTimeout(res, 500));
+  }
+  p.kill();
+  return { ...(r ?? { error: "no report" }), wall_s: (Date.now() - t0) / 1000, ...mem };
+}
+
 async function godotRun(c) {
   const proj = path.join(here, "godot");
   const t0 = Date.now();
-  const p = spawn(godot, ["--path", proj, "--", `--pack=${pack}`, `--variant=${c.variant}`, `--view=${c.view}`, `--size=${c.size.join("x")}`, `--bench=${seconds}`, ...(vsync ? ["--vsync"] : [])], { stdio: ["ignore", "pipe", "pipe"] });
+  const p = spawn(godot, ["--path", proj, "--", `--pack=${pack}`, `--variant=${c.variant}`, `--view=${c.view}`, `--size=${c.size.join("x")}`, `--bench=${seconds}`, ...(vsync ? ["--vsync"] : []), ...(opacity ? [`--opacity=${opacity}`] : [])], { stdio: ["ignore", "pipe", "pipe"] });
   let out = "";
   p.stdout.on("data", (d) => (out += d));
   p.stderr.on("data", (d) => (out += d));
@@ -87,13 +108,14 @@ async function godotRun(c) {
 }
 
 const results = [];
-for (const c of CASES) {
-  for (const engine of ["web", "electron", "godot"]) {
+for (const c of QUICK ? CASES_ALL.slice(0, 1) : CASES_ALL) {
+  for (const engine of ["web", "electron", "tauri", "godot"]) {
     if (only && !only.split(",").includes(engine)) continue;
-    const r = engine === "web" ? await web(c) : engine === "electron" ? await electronRun(c) : await godotRun(c);
+    if (opacity && engine === "web") continue;
+    const r = engine === "web" ? await web(c) : engine === "electron" ? await electronRun(c) : engine === "tauri" ? await tauriRun(c) : await godotRun(c);
     const row = { engine, ...c, size: c.size.join("x"), ...r };
     console.log(JSON.stringify(row));
     results.push(row);
   }
 }
-fs.writeFileSync(path.join(here, vsync ? "bench-results-vsync.json" : "bench-results.json"), JSON.stringify(results, null, 1));
+fs.writeFileSync(path.join(here, `bench-results${vsync ? "-vsync" : ""}${opacity ? "-opacity" : ""}${only ? "-" + only.replace(/,/g, "-") : ""}.json`), JSON.stringify(results, null, 1));

@@ -39,6 +39,16 @@ if (engine === "godot") {
   if (has("--frameless")) a.push("--borderless");
   if (val("--opacity")) a.push(`--opacity=${val("--opacity")}`);
   child = spawn(godot, a, { detached: true, stdio: "ignore" });
+} else if (engine === "tauri") {
+  const exe = path.join(here, "tauri/target/release/town-render-tauri.exe");
+  if (!fs.existsSync(exe)) throw new Error("run cargo build --release in proto/town-render/tauri first");
+  const op = val("--opacity");
+  // Tauri has no whole-window opacity: a transparent window and the page fades itself
+  const a = [`--url=http://127.0.0.1:4478/?variant=${variant}&view=${view}${op ? `&opacity=${op}` : ""}`, "--size=1440x720"];
+  if (has("--on-top")) a.push("--on-top");
+  if (has("--frameless")) a.push("--frameless");
+  if (op) a.push("--transparent");
+  child = spawn(exe, a, { detached: true, stdio: "ignore" });
 } else {
   const exe = path.join(here, "electron/node_modules/electron/dist/electron.exe");
   if (!fs.existsSync(exe)) throw new Error("run npm install in proto/town-render/electron first");

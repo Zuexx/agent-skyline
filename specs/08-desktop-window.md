@@ -46,38 +46,44 @@ followed by the choice and why. Whichever is not chosen keeps its prototype on a
 ### 8A, first round: the painted town (2026-10-23)
 
 The town direction (`09-visual-language.zh-TW.md`, `10-town-pack.md`) added a third candidate:
-**Godot**, which is renderer and window in one. Prototype in `proto/town-render/`. All three read the
+**Godot**, which is renderer and window in one. Prototype in `proto/town-render/`. All of them read the
 same town pack (v4 town, 13 MB) and the same live state (`state.mjs`, which follows the server's
 event stream), and draw the same things. Benchmark: `bench.mjs`, same agents (`--demo-fixed`),
-10 s per scene.
+10 s per scene; raw rows in `bench-results-all.jsonl` (its Tauri memory figures are double-counted,
+see below).
 
-| Measure | Web page (Chrome) | Electron 45 | Godot 4.7.2 |
-|---|---|---|---|
-| Looks | Same as the art proof of concept; characters slightly darker | same as web | Same as the proof of concept |
-| Frame rate at the display rate (240 Hz), 1920×960 and 1920×1080 | 240, 0 frames over 20 ms | 240, 0 over 20 ms | 240, 0 over 20 ms |
-| Same at 3840×1920 | 240, 0 over 20 ms | 99, 6 over 20 ms (window smaller than the canvas, scaled) | 152, 0 over 20 ms |
-| Uncapped average fps, 1080p scenes | 1,160–1,230 | 1,475–1,520 | 930–1,190 |
-| Uncapped worst frames | 50–90 ms stalls ~8×/s: the browser's frame queue throttling without vsync, gone at the display rate | same | none (p99 1.4 ms) |
-| GPU time per frame, 1080p | 1.2–2.0 ms | not measured | 0.8–1.3 ms |
-| GPU time per frame, 3840×1920 | 3.8 ms | not measured | 2.3 ms |
-| RAM, all processes, at the display rate | 0.94–1.0 GB (Chrome tree, 8 processes) | 0.87–0.94 GB | 1.57 GB (to investigate: likely the 2 M-vertex grid kept on the CPU) |
-| GPU memory (dedicated) | 510–540 MB | 515–550 MB | 840 MB |
-| Load (pack to first frame, inside the app) | 0.2–0.3 s | 0.2–0.3 s | 0.37 s |
-| Pin on top | not possible in a tab | `alwaysOnTop` (set; not yet checked by eye) | flag set and read back |
-| Opacity | not possible in a tab | `setOpacity` (set; not yet checked by eye) | per-pixel transparency, read back; not yet checked by eye |
-| Frameless, resize | — | yes / yes | yes / yes |
-| Click-through | — | not tested yet | not tested yet |
-| Size on disk | — | 357 MB unpacked runtime | 173 MB editor; an exported app was not built (no export templates installed) |
-| Toolchain | none | npm only | Godot editor + export templates |
+| Measure | Web page (Chrome) | Electron 45 | Tauri 2 (WebView2) | Godot 4.7.2 |
+|---|---|---|---|---|
+| Looks | Same as the art proof of concept; characters slightly darker | same as web | same as web | Same as the proof of concept |
+| At the display rate (240 Hz), all four scenes incl. 3840×1920 | 240 fps, 0 frames over 20 ms | 240, 0 over 20 ms (one run: 2) | 240, 0 over 20 ms | 240, 0 over 20 ms |
+| Same, window 85 % see-through | — | 240, 0 over 20 ms (`setOpacity`) | 240, 0 over 20 ms (transparent window, page fades itself) | 240, 0 over 20 ms (per-pixel transparency) |
+| Uncapped worst frames | 50–90 ms stalls several times a second: the frame queue throttling without vsync; gone at the display rate | same | same | none (p99 1.4 ms) |
+| GPU time per frame (at the display rate), 1080p | 1.3–4.5 ms | 3.7–4.0 ms | 0.9–3.7 ms | 1.1–1.5 ms |
+| GPU time per frame, 3840×1920 | 4.7 ms | 4.0 ms | 2.8 ms | 2.3 ms |
+| RAM, all processes, at the display rate | 0.95–1.0 GB | 0.87–0.95 GB | ~0.9 GB (checked live: 914 MB, 11 processes) | 1.57–1.64 GB (to investigate: likely the 2 M-vertex grid kept on the CPU) |
+| GPU memory (dedicated) | 510–540 MB | 520–550 MB | ~550 MB | 840–870 MB |
+| Load (pack to first frame, inside the app) | 0.2–0.3 s | 0.2–0.3 s | 0.2–0.3 s | 0.37 s |
+| Pin on top | not possible in a tab | set; the user had it open pinned (not explicitly confirmed) | same | same, flag read back |
+| See-through | not possible in a tab | set; the user had it open at 85 % (not explicitly confirmed) | same | same, flag read back |
+| Frameless, resize | — | yes / yes | yes / yes | yes / yes |
+| Click-through | — | not tested yet | not tested yet | not tested yet |
+| Size on disk | — | 357 MB unpacked runtime | **8 MB** app (uses the system WebView2) | 173 MB editor; an exported app was not built (no export templates), expected 70–100 MB, unverified |
+| Build | none | npm only | Rust (installed for this, with the user's OK) + MSVC build tools; first release build 2 min 10 s | Godot editor + export templates |
+| The user, trying all three side by side | — | "Godot 比較順" | smooth (said "Tauri" when asked how it compares) | "比較順" |
 
-**Tauri: not tested.** It needs a Rust toolchain, which is not installed on this machine; installing it
-is the user's call. WebView2 (Edge 153) is installed, so its rendering should match the web column, but
-that is unverified.
+Notes:
 
-What the numbers say so far: all three are fast enough for this scene with a lot of room (a 240 Hz
-display never dropped a frame). Godot needs about 35–45 % less GPU time and shows no stalls when
-uncapped; the web stack uses less RAM and needs no second code base (the rest of Agent Skyline is a
-web page). No choice yet.
+- The GPU timer is noisy in the browser shells (ANGLE / D3D11 timer queries); uncapped runs gave no
+  usable browser GPU times. Godot's numbers come from its own render-time counter.
+- Tauri memory: the benchmark summed two process filters that both matched the WebView2 processes;
+  a live check with one filter gave 914 MB RAM and 552 MB GPU memory. `bench.mjs` is fixed.
+- When the user compared the windows, a Rust release build was running at the same time, and the
+  Electron window used `setOpacity` (a layered window). Either may explain why Electron felt less
+  smooth; the benchmark shows no dropped frames for any of them.
+
+What the numbers say: all four are fast enough with a lot of room. Godot needs the least GPU time
+and never stalls, but uses the most memory and is a second code base. Tauri is tiny on disk and keeps
+the one web code base. No choice yet.
 
 ## Pieces
 

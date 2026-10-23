@@ -1,0 +1,15 @@
+[package]
+name = "town-render-tauri"
+version = "0.1.0"
+edition = "2021"
+description = "Tauri shell around the web town renderer (specs/08, 8A)"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+
+[profile.release]
+strip = true
+lto = true
