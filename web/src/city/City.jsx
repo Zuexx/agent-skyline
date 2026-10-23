@@ -1,6 +1,7 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import Districts from "./Districts.jsx";
 import Buildings from "./Buildings.jsx";
+import { makeLook } from "./looks.js";
 import Agents from "./Agents.jsx";
 import LockCaps from "./LockCaps.jsx";
 import Pulses from "./Pulses.jsx";
@@ -8,6 +9,7 @@ import Roads from "./Roads.jsx";
 import DistrictLabels from "./DistrictLabels.jsx";
 import { buildingTransform, HEIGHT_SCALE } from "../lib/geometry.js";
 import { theme } from "../theme.js";
+import { parentDir } from "../lib/parent.js";
 
 // The whole city, centered on the origin: raw coordinates are offset by
 // (-width/2, 0, -depth/2) so the camera can look at (0, 0, 0).
@@ -30,7 +32,12 @@ export default function City({
   labelBus = null,
   selectedAgent = null,
   onSelectAgent = null,
+  lookStyle = null,
+  facing = 0,
 }) {
+  // A sprite theme's building look (city/looks.js), rebuilt when the building set changes.
+  const look = useMemo(() => (lookStyle ? makeLook(lookStyle, city.buildings ?? []) : null), [lookStyle, city.buildings]);
+  useEffect(() => () => look?.dispose(), [look]);
   const districtDepthByPath = useMemo(
     () => Object.fromEntries((city.districts ?? []).map((d) => [d.path, d.depth])),
     [city]
@@ -41,12 +48,14 @@ export default function City({
     const roofs = new Map();
     const bases = new Map();
     for (const b of city.buildings ?? []) {
-      const { position, scale } = buildingTransform(b, districtDepthByPath, HEIGHT_SCALE);
+      const { position, scale } = look
+        ? look.transform(b, (districtDepthByPath[b.dir ?? parentDir(b.path)] ?? 0) * 0.1)
+        : buildingTransform(b, districtDepthByPath, HEIGHT_SCALE);
       roofs.set(b.path, [position[0], position[1] + scale[1] / 2, position[2]]);
       bases.set(b.path, [position[0], position[1] - scale[1] / 2, position[2]]);
     }
     return { roofs, bases };
-  }, [city, districtDepthByPath]);
+  }, [city, districtDepthByPath, look]);
 
   // Files per district, counting everything below it, for the name signs.
   const fileCounts = useMemo(() => {
@@ -89,6 +98,8 @@ export default function City({
         onFocus={onFocus}
         activity={activity}
         diff={diff}
+        look={look}
+        facing={look?.billboard ? facing : 0}
       />
       {roads && <Roads path={roads.path} deps={roads.deps} roofs={roofs} />}
       <Agents agents={activity?.agents} roofs={roofs} selected={selectedAgent} onSelect={onSelectAgent} />

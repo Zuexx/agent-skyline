@@ -2,8 +2,10 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { Canvas, useThree } from "@react-three/fiber";
 import { MapControls, OrthographicCamera } from "@react-three/drei";
-import { Bloom, EffectComposer } from "@react-three/postprocessing";
 import CameraFollow from "./city/CameraFollow.jsx";
+import CameraRig from "./city/CameraRig.jsx";
+import PostFx from "./city/PostFx.jsx";
+import TurnButtons from "./ui/TurnButtons.jsx";
 import DemoBridge from "./city/DemoBridge.jsx";
 
 // `?demo` exposes a tiny hook for scripted recordings (see city/DemoBridge.jsx).
@@ -70,14 +72,14 @@ function FitCamera({ width, depth, nonce }) {
     if (controls) {
       const dist = camera.position.distanceTo(controls.target);
       controls.target.set(0, 0, 0);
-      camera.position.copy(ISO).multiplyScalar(dist);
+      camera.position.copy(camera.userData.viewDir ?? ISO).multiplyScalar(dist); // keeps a fixed camera's turn
       controls.update();
     }
     const w = Number(width) || 0;
     const d = Number(depth) || 0;
     if (w <= 0 && d <= 0) return;
 
-    const f = ISO.clone().negate(); // view direction, camera -> origin
+    const f = (camera.userData.viewDir ?? ISO).clone().negate(); // view direction, camera -> origin
     const r = new THREE.Vector3(0, 1, 0).cross(f).normalize(); // screen right
     const u = f.clone().negate().cross(r); // screen up (camera Y axis)
 
@@ -239,6 +241,11 @@ export default function App() {
   const themePacks = useThemeList();
   const { palette, variant } = resolvePalette(pack, resolvedTheme);
   applyTheme(palette, `${pack.id}:${variant}`);
+  // Sprite themes: a fixed camera that turns in steps, and a building look (city/looks.js).
+  const fixedCamera = pack.camera?.mode === "fixed";
+  const lookStyle = pack.renderer === "sprites" ? (pack.buildings?.style ?? "model") : null;
+  const [facing, setFacing] = useState(Math.PI / 4); // camera azimuth; starts on the iso diagonal
+  const turnRef = useRef(null);
   setLocale(prefs.locale);
 
   // The working tree's city (what the agent is editing right now).
@@ -647,6 +654,7 @@ export default function App() {
           maxTargetRadius={Math.hypot(Number(view.width) || 0, Number(view.depth) || 0) / 2 || Infinity}
         />
         <CameraFollow target={latestTarget} enabled={follow} focus={focus} />
+        <CameraRig fixed={fixedCamera} stepDeg={pack.camera?.rotateStepDeg ?? 90} turnRef={turnRef} onTurned={setFacing} />
         <PickSupport enabled={pickMode} projRef={projRef} />
         <FitCamera width={view.width} depth={view.depth} nonce={fitNonce} />
         {DEMO && (
@@ -684,15 +692,13 @@ export default function App() {
           labelBus={labelBus}
           selectedAgent={agentFocus}
           onSelectAgent={pickAgent}
+          lookStyle={lookStyle}
+          facing={facing}
         />
-        {/* Night only: colors pushed above 1.0 (active buildings, pulses, agents) cross the threshold. */}
-        {theme.bloom && (
-          <EffectComposer>
-            <Bloom mipmapBlur intensity={1.4} luminanceThreshold={1} luminanceSmoothing={0.2} />
-          </EffectComposer>
-        )}
+        <PostFx post={pack.post ?? null} />
       </Canvas>
       <LabelLayer bus={labelBus} grouped={view.grouped} />
+      {fixedCamera && <TurnButtons onTurn={(dir) => turnRef.current?.(dir)} />}
       <TopBar
         repo={liveCity.repo ?? ""}
         buildingCount={city.buildings?.length ?? 0}

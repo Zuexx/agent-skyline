@@ -1,4 +1,5 @@
-// usage: node perf.mjs <url> [seconds-to-settle]
+// usage: node perf.mjs <url> [seconds-to-settle] [replay]
+// SKYLINE_PACK=<id> measures with that theme pack (day variant), instead of Blocks at night.
 // Opens the page in real Chrome (GPU on), measures FPS, then takes a CPU profile and prints the
 // functions with the most self time.
 import { chromium } from "playwright-core";
@@ -10,7 +11,11 @@ const browser = await chromium.launch({
   args: ["--use-angle=d3d11", "--enable-gpu-rasterization", "--ignore-gpu-blocklist"],
 });
 const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
-await page.addInitScript(() => localStorage.setItem("agent-skyline.prefs", JSON.stringify({ theme: "night", locale: "en" })));
+const pack = process.env.SKYLINE_PACK || null;
+await page.addInitScript(
+  (p) => localStorage.setItem("agent-skyline.prefs", JSON.stringify(p ? { theme: "day", pack: p, locale: "en" } : { theme: "night", locale: "en" })),
+  pack
+);
 const t0 = Date.now();
 await page.goto(url);
 await page.waitForSelector("canvas", { timeout: 60000 });
@@ -56,6 +61,7 @@ profile.samples.forEach((id, i) => {
 const total = [...self.values()].reduce((a, b) => a + b, 0);
 const top = [...self.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12);
 const heap = await page.evaluate(() => Math.round((performance.memory?.usedJSHeapSize ?? 0) / 1048576));
-console.log(JSON.stringify({ url, loadMs, fps, heapMB: heap, gpu }, null, 0));
+const postLevel = await page.evaluate(() => document.documentElement.dataset.postLevel ?? null);
+console.log(JSON.stringify({ url, pack, postLevel, loadMs, fps, heapMB: heap, gpu }, null, 0));
 for (const [k, ms] of top) console.log(`${((ms / total) * 100).toFixed(1).padStart(5)}%  ${ms.toFixed(0).padStart(6)}ms  ${k}`);
 await browser.close();

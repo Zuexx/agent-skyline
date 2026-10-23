@@ -139,3 +139,21 @@ A user pack with the same id as a built-in one wins.
 
 Each part ends with tests passing, the perf bench at 20,000 files within budget, and a browser
 check of switching packs back and forth.
+
+## 6B results (2026-10-23)
+
+Both building looks are in `web/src/city/looks.js`, chosen per pack with `buildings.style`
+(`"model"` or `"billboard"`), drawn from placeholder art made in code (`city/protoAtlas.js`) until
+real art exists. Measured with `bench/perf.mjs` (headless Chrome, RTX 4090, D3D11, 1600×900, no
+frame cap) on the 20,000-file synthetic repo, with 3 simulated agents sending 10 events a second:
+
+| Look | Post level | fps | JS heap | First load |
+|---|---|---:|---:|---:|
+| Blocks (night) | bloom | 238 | 36 MB | 222 ms |
+| model | high (tilt-shift + bloom + vignette) | 238 | 39 MB | 226 ms |
+| billboard | high | 237 | 38 MB | 226 ms |
+
+Not tested: a weaker GPU, and the quality step-down under real load (it never triggered here).
+The tilt-shift at `focusArea 0.45, feather 0.3` is too subtle to see; tune it with the real art.
+Billboards only face the camera at rest; during the 0.35 s turn they show at an angle.
+The choice between the looks is the user's, after seeing both with real art.

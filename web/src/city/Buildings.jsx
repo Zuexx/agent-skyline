@@ -5,6 +5,7 @@ import { useFrame } from "@react-three/fiber";
 import { buildingTransform, HEIGHT_SCALE } from "../lib/geometry.js";
 import { buildingTint } from "../lib/activity.js";
 import { lit, theme } from "../theme.js";
+import { parentDir } from "../lib/parent.js";
 
 // ONE InstancedMesh for every building: unit box geometry, per-instance matrix
 // (position + 0.9 x height x 0.9 scale) and per-instance color via setColorAt.
@@ -17,7 +18,12 @@ import { lit, theme } from "../theme.js";
 const TINT_INTERVAL = 0.25; // seconds between tint re-evaluations
 
 // `diff`: Map path -> change while a branch is compared. `onFocus(i)`: double-click a building.
-export default function Buildings({ buildings, districtDepthByPath, selected = null, onSelect, onFocus, activity = null, diff = null }) {
+// `look` (city/looks.js): a sprite theme's geometry, material, placement and atlas cells instead of
+// the plain box; `facing`: the Y rotation every building gets (billboards turn to the camera).
+export default function Buildings({ buildings, districtDepthByPath, selected = null, onSelect, onFocus, activity = null, diff = null, look = null, facing = 0 }) {
+  // Where building b goes: the look's own placement, or the box scaled to its line count.
+  const place = (b) =>
+    look ? look.transform(b, (districtDepthByPath[b.dir ?? parentDir(b.path)] ?? 0) * 0.1) : buildingTransform(b, districtDepthByPath, HEIGHT_SCALE);
   const ref = useRef(null);
   const dummy = useMemo(() => new THREE.Object3D(), []);
   const baseColor = useMemo(() => new THREE.Color(theme.building), []);
@@ -110,7 +116,7 @@ export default function Buildings({ buildings, districtDepthByPath, selected = n
     list.forEach((t, i) => {
       dummy.position.set(t.p[0], t.p[1], t.p[2]);
       dummy.scale.set(t.s[0], t.s[1], t.s[2]);
-      dummy.rotation.set(0, 0, 0);
+      dummy.rotation.set(0, facing, 0);
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
     });
@@ -121,11 +127,16 @@ export default function Buildings({ buildings, districtDepthByPath, selected = n
     const mesh = ref.current;
     if (!mesh) return;
     const target = (buildings ?? []).map((b) => {
-      const { position, scale } = buildingTransform(b, districtDepthByPath, HEIGHT_SCALE);
+      const { position, scale } = place(b);
       return { p: position, s: scale };
     });
+    if (look) mesh.geometry.setAttribute("aRect", new THREE.InstancedBufferAttribute(Float32Array.from(look.rects.flat()), 4));
     const sameSet = placed.current && placed.current.length === target.length && mesh.count === target.length;
-    if (sameSet) {
+    // Only a turn (same spots, new facing): no flight, just rewrite the matrices.
+    const moved = sameSet && target.some((t, i) => t.p.some((v, k) => v !== placed.current[i].p[k]) || t.s.some((v, k) => v !== placed.current[i].s[k]));
+    if (sameSet && !moved) {
+      writeMatrices(mesh, target);
+    } else if (sameSet) {
       flight.current = { from: placed.current, to: target, start: performance.now() };
     } else {
       writeMatrices(mesh, target);
@@ -140,7 +151,8 @@ export default function Buildings({ buildings, districtDepthByPath, selected = n
       setHovered(null);
     }
     mesh.computeBoundingSphere();
-  }, [buildings, districtDepthByPath, dummy, baseColor]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buildings, districtDepthByPath, dummy, baseColor, look, facing]);
 
   const FLIGHT_MS = 1100;
   useFrame(() => {
@@ -203,17 +215,19 @@ export default function Buildings({ buildings, districtDepthByPath, selected = n
   const label = useMemo(() => {
     if (hovered == null || !buildings?.[hovered]) return null;
     const b = buildings[hovered];
-    const { position, scale } = buildingTransform(b, districtDepthByPath, HEIGHT_SCALE);
+    const { position, scale } = place(b);
     return { path: b.path, position: [position[0], position[1] + scale[1] / 2 + 0.4, position[2]] };
-  }, [hovered, buildings, districtDepthByPath]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hovered, buildings, districtDepthByPath, look]);
 
   if (!buildings?.length) return null;
 
   return (
     <group>
       <instancedMesh
+        key={look ? "look" : "box"}
         ref={ref}
-        args={[undefined, undefined, buildings.length]}
+        args={[look?.geometry, look?.material, buildings.length]}
         frustumCulled={false}
         onPointerMove={(e) => {
           e.stopPropagation(); // nearest building wins over anything behind it
@@ -231,8 +245,8 @@ export default function Buildings({ buildings, districtDepthByPath, selected = n
       >
         {/* White base material: the per-instance colors show through unchanged.
             toneMapped off so lit colors above 1.0 reach the bloom pass intact. */}
-        <boxGeometry />
-        <meshLambertMaterial toneMapped={false} />
+        {!look && <boxGeometry />}
+        {!look && <meshLambertMaterial toneMapped={false} />}
       </instancedMesh>
       {label && (
         <Html position={label.position} center zIndexRange={[50, 0]} style={{ pointerEvents: "none" }}>
