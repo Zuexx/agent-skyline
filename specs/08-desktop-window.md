@@ -83,7 +83,12 @@ Notes:
 
 What the numbers say: all four are fast enough with a lot of room. Godot needs the least GPU time
 and never stalls, but uses the most memory and is a second code base. Tauri is tiny on disk and keeps
-the one web code base. No choice yet.
+the one web code base.
+
+**Decision (2026-10-23, the user): Tauri**, with the town drawn by the web renderer. Reasons: one code
+base with the rest of Agent Skyline (panels, tracker, file lists stay as they are), 8 MB, about half of
+Godot's memory, and smooth at the display rate in every scene. Godot's prototype stays in
+`proto/town-render/godot/` for reference. Still to test before shipping: click-through.
 
 ## Pieces
 
