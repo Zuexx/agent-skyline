@@ -591,11 +591,17 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
           left = 0;
         }
       }
+      // Safety net: a walker that makes no progress for a second skips to its next route point.
+      if (this.path.length && this.pos.distanceToSquared(before) < 1e-8) {
+        this.stuckT = (this.stuckT ?? 0) + dt;
+        if (this.stuckT > 1) (this.pos.copy(this.path.shift()), (this.stuckT = 0));
+      } else this.stuckT = 0;
       const walking = this.path.length > 0;
       if (walking) {
-        const [px, py] = pixelOf(this.pos);
-        const g = groundAt(px, py);
-        if (g) this.pos.copy(g);
+        // The route points lie on the painted ground about a metre apart, so moving between them
+        // keeps the feet down. (Snapping to the depth map here rounded to whole pixels: far from
+        // the camera a pixel is longer than a frame's step, and the walker never got anywhere.)
+        const [px] = pixelOf(this.pos);
         // face the way it moves on screen; ignore tiny sideways changes (walking toward the camera)
         const [bx] = pixelOf(before);
         const dx = px - bx;
