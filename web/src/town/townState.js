@@ -33,6 +33,7 @@ export function buildingOf(p, buildingIds) {
 export function townState(activity, agentSeq, buildingIds, nowMs) {
   const agents = [];
   for (const [key, a] of Object.entries(activity?.agents ?? {})) {
+    if (a.source === "watcher") continue; // changes no agent reported: no character (spec 09 §3.1)
     const building = buildingOf(a.path, buildingIds) ?? "(root)";
     const t = Date.parse(a.ts ?? "");
     const stale = Number.isNaN(t) || nowMs - t > ACTIVE_MS;

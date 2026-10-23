@@ -14,13 +14,16 @@ import { findPath, invert3, makeGrid } from "./townPaths.js";
 /**
  * Draw the town pack `pack` (its parsed theme.json; files under the URL `base`, ending in "/") into
  * `container`. `variant`: "night" | "day"; `view`: "pano" | "close" | "priest". `initialState` /
- * setState(): { agents: [{ key, character, building, action }], recent: [building ids] } (see
- * townState.js). opts: { hud: element for an fps line, opacity, dof, edges, size: [w, h], bench: s,
- * onBench(result) }. Resolves to { setState, setSites, fps, dispose }. setSites([{ id, lot: [x, z] }]):
+ * setState(): { agents: [{ key, character, building, action, name?, prompt? }], recent: [building
+ * ids] } (see townState.js); `name` is the agent's name tag ("Claude 1"), `prompt` { text, at: ms }
+ * its latest prompt, shown in a speech bubble for a few seconds after it arrives. opts: { hud: element for an fps line, opacity, dof, edges, size: [w, h], bench: s,
+ * onBench(result) }. `rootName`: the sign on the town hall (the repo's name). Resolves to
+ * { setState, setSites, setSelected, pick, fps, dispose }. pick(clientX, clientY): the building id
+ * under that page point, or null; setSelected(id | null) marks one building's sign. setSites([{ id, lot: [x, z] }]):
  * folders the painting does not have, drawn as construction sites on the pack's open lots
  * (townLayout.js); agents and effects then treat them like buildings.
  */
-export async function createPaintedTown({ container, pack, base, variant = "night", view = "pano", initialState = null, initialSites = [], opts = {} }) {
+export async function createPaintedTown({ container, pack, base, variant = "night", view = "pano", initialState = null, initialSites = [], rootName = "", opts = {} }) {
   const variantName = variant;
   const benchS = Number(opts.bench ?? 0);
   const fixedSize = opts.size ?? null;
@@ -596,6 +599,8 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       this.alert = null;
       this.sparks = null;
       this.facingLeft = false;
+      this.tag = makeAgentTag(this.color);
+      this.tagAt = this.pos.clone();
       this.state = a;
     }
     // Standing about: the plain idle most of the time, now and then another idle clip from the pack
@@ -665,6 +670,7 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       placeAtFeet(this.ring, this.pos, 0);
       placeAtFeet(this.shadow, this.pos, this.h * 0.06); // the sun is upper left: shadow a little right
       this.light.position.copy(this.pos).add(new THREE.Vector3(0, this.h * 0.3, this.h * 0.4));
+      this.updateTag();
 
       const blocked = !walking && this.state.action === "blocked";
       if (blocked && !this.alert) {
@@ -691,7 +697,21 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
         this.sparks.update(dt);
       }
     }
+    updateTag() {
+      const { name, prompt } = this.state;
+      if (this.tag.name.textContent !== (name ?? "")) this.tag.name.textContent = name ?? "";
+      this.tag.name.style.display = name ? "block" : "none";
+      const say = prompt?.text && Date.now() - prompt.at < BUBBLE_MS ? prompt.text : null;
+      if (say !== this.tag.said) {
+        this.tag.said = say;
+        const chars = [...(say ?? "").replace(/\s+/g, " ").trim()];
+        this.tag.bubble.textContent = chars.length > BUBBLE_CHARS ? chars.slice(0, BUBBLE_CHARS).join("") + "…" : chars.join("");
+        this.tag.bubble.style.display = say ? "block" : "none";
+      }
+      this.tagAt.copy(this.pos).y += this.h * 1.02;
+    }
     remove() {
+      this.tag.remove();
       for (const m of [this.shadow, this.ring, this.light]) scene.remove(m);
       this.sprite.remove();
       this.alert?.remove();
@@ -793,13 +813,93 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     };
   })();
 
+  // ---------------------------------------------------------------- signs and name tags (page text over the canvas, spec 09 §7)
+  const tagLayer = document.createElement("div");
+  Object.assign(tagLayer.style, { position: "absolute", inset: "0", pointerEvents: "none", overflow: "hidden" });
+  container.appendChild(tagLayer);
+  const TAG_FONT = "700 12px/1.25 'Segoe UI', system-ui, sans-serif";
+  // A wooden board on a post in front of each building, with the folder's name; dashed when the
+  // building is still a construction site.
+  const signs = new Map(); // id -> { el, board, at }
+  let selectedId = null;
+  function makeSign(id, at, site = false) {
+    const el = document.createElement("div");
+    Object.assign(el.style, { position: "absolute", left: "0", top: "0", display: "flex", flexDirection: "column", alignItems: "center" });
+    const board = document.createElement("div");
+    board.textContent = id === "(root)" ? rootName || "(root)" : id;
+    Object.assign(board.style, {
+      padding: "1px 7px 2px",
+      borderRadius: "3px",
+      background: "linear-gradient(#7a5332, #5b3b20)",
+      border: site ? "1.5px dashed #f3cf7a" : "1.5px solid #2c1a0c",
+      boxShadow: "inset 0 1px 0 rgba(255,225,170,0.35), 0 2px 4px rgba(0,0,0,0.45)",
+      color: "#fff3d6",
+      font: TAG_FONT,
+      textShadow: "0 1px 0 #2c1a0c",
+      whiteSpace: "nowrap",
+    });
+    const post = document.createElement("div");
+    Object.assign(post.style, { width: "3px", height: "9px", background: "#3d2614", boxShadow: "0 1px 2px rgba(0,0,0,0.5)" });
+    el.append(board, post);
+    tagLayer.appendChild(el);
+    const sign = { el, board, at: at.clone(), remove: () => el.remove() };
+    styleSign(id, sign);
+    return sign;
+  }
+  function styleSign(id, s) {
+    const on = id === selectedId;
+    s.board.style.outline = on ? "2px solid #ffd75e" : "none";
+    s.board.style.outlineOffset = "1px";
+    s.el.style.zIndex = on ? "2" : "1";
+  }
+  function setSelected(id) {
+    selectedId = id ?? null;
+    for (const [k, s] of signs) styleSign(k, s);
+  }
+  // painted buildings: the sign stands at the front point (b.world)
+  for (const b of V.buildings) signs.set(b.id, makeSign(b.id, v3(b.world)));
+
+  /** The name tag over an agent's head and the speech bubble with its prompt. */
+  function makeAgentTag(color) {
+    const css = `#${color.getHexString(THREE.SRGBColorSpace)}`;
+    const el = document.createElement("div");
+    Object.assign(el.style, { position: "absolute", left: "0", top: "0", display: "flex", flexDirection: "column", alignItems: "center", gap: "3px", zIndex: "3" });
+    const bubble = document.createElement("div");
+    Object.assign(bubble.style, {
+      display: "none",
+      maxWidth: "240px",
+      padding: "4px 9px",
+      borderRadius: "8px",
+      background: "rgba(12,14,30,0.92)",
+      border: "2px solid #f4f1e6",
+      color: "#fff",
+      font: TAG_FONT,
+      whiteSpace: "nowrap",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      boxShadow: "0 2px 6px rgba(0,0,0,0.5)",
+    });
+    const name = document.createElement("div");
+    Object.assign(name.style, {
+      padding: "0 6px",
+      borderRadius: "4px",
+      background: "rgba(12,14,30,0.78)",
+      border: `1.5px solid ${css}`,
+      color: css,
+      font: TAG_FONT,
+      whiteSpace: "nowrap",
+    });
+    el.append(bubble, name);
+    tagLayer.appendChild(el);
+    return { el, bubble, name, said: null, remove: () => el.remove() };
+  }
+  const BUBBLE_MS = 6000; // how long a new prompt shows over the agent's head
+  const BUBBLE_CHARS = 20; // spec 09 §3.2: the first 20 characters
+
   // ---------------------------------------------------------------- construction sites (folders the painting lacks)
   // Until the art pipeline delivers the "construction" sprite, the scaffold stands in.
   const SITE_SPRITE = pack.sprites.construction ? "construction" : "scaffold";
   const SITE_W = 5.5; // metres across
-  const labelLayer = document.createElement("div");
-  Object.assign(labelLayer.style, { position: "absolute", inset: "0", pointerEvents: "none", overflow: "hidden" });
-  container.appendChild(labelLayer);
   const sites = new Map(); // id -> { sprite, label, pos }
   let grid = null;
   function rebuildGrid() {
@@ -819,7 +919,9 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     for (const [id, o] of sites) {
       if (want.has(id) && want.get(id).pixel.every((v, i) => Math.abs(v - o.pixel[i]) < 0.5)) continue;
       o.sprite.remove();
-      o.label.remove();
+      scene.remove(o.shadow);
+      o.sign.remove();
+      signs.delete(id);
       buildings.delete(id);
       sites.delete(id);
     }
@@ -829,27 +931,15 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       const sprite = new Sprite((SITE_W * meta.char_h) / (meta.cell[0] - 12));
       sprite.set(SITE_SPRITE);
       sprite.mesh.position.copy(pos);
-      const label = document.createElement("div");
-      label.textContent = id;
-      Object.assign(label.style, {
-        position: "absolute",
-        left: "0",
-        top: "0",
-        padding: "2px 8px",
-        borderRadius: "6px",
-        background: "rgba(20,24,40,0.78)",
-        border: "1px dashed rgba(255,214,120,0.9)",
-        color: "#fff",
-        font: "600 12px system-ui, sans-serif",
-        whiteSpace: "nowrap",
-      });
-      labelLayer.appendChild(label);
-      sites.set(id, { sprite, label, pos, pixel, lot: list.find((s) => s.id === id).lot, top: pos.clone().add(new THREE.Vector3(0, sprite.h * 1.15, 0)) });
+      // the art has no cast shadow: a soft contact shadow on the ground under it
+      const shadow = groundPlane(SITE_W * 1.25, SITE_W * 1.25 * 2.2, glowMat(new THREE.Color(0, 0, 0), 1, false, 0.45), pos);
+      const sign = makeSign(id, pos, true);
+      signs.set(id, sign);
+      sites.set(id, { sprite, shadow, sign, pos, pixel, lot: list.find((s) => s.id === id).lot, top: pos.clone().add(new THREE.Vector3(0, sprite.h * 0.8, 0)) });
       buildings.set(id, { id, pixel, pos, site: true });
     }
     rebuildGrid();
   }
-  const projected = new THREE.Vector3();
   // The route on the painted ground from world point `a` to `b`: world points about a metre apart,
   // along the streets and around houses (townPaths.js); a straight line without a layout.
   function routeBetween(a, b) {
@@ -869,14 +959,48 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     out.push(b.clone());
     return out;
   }
-  function placeLabels() {
-    const { w, h } = size();
-    for (const o of sites.values()) {
-      projected.copy(o.top).project(camera);
-      const hidden = projected.z > 1 || Math.abs(projected.x) > 1.2 || Math.abs(projected.y) > 1.2;
-      o.label.style.display = hidden ? "none" : "block";
-      if (!hidden) o.label.style.transform = `translate(${((projected.x + 1) / 2) * w}px, ${((1 - projected.y) / 2) * h}px) translate(-50%, -100%)`;
+  // Clicks: the painting pixel under a page point (the camera sits at the painting's eye), then the
+  // building whose area holds it; where areas overlap, the one standing nearer the camera.
+  const ray = new THREE.Vector3();
+  function pick(clientX, clientY) {
+    const r = renderer.domElement.getBoundingClientRect();
+    ray.set(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1, 0.5).unproject(camera);
+    const [x, y] = pixelOf(ray);
+    let best = null;
+    for (const b of buildings.values()) {
+      const box = b.site ? siteBox(b.id) : b.box;
+      if (!box || x < box[0] || x > box[2] || y < box[1] || y > box[3]) continue;
+      if (!best || b.pixel[1] > best.pixel[1]) best = b;
     }
+    if (best) return best.id;
+    // between houses: the nearest front door within reach
+    let near = null;
+    let nd = 60;
+    for (const b of buildings.values()) {
+      const d = Math.hypot(b.pixel[0] - x, b.pixel[1] - 30 - y);
+      if (d < nd) (nd = d), (near = b);
+    }
+    return near?.id ?? null;
+  }
+  function siteBox(id) {
+    const o = sites.get(id);
+    if (!o) return null;
+    const top = pixelOf(o.top);
+    const half = (o.pixel[1] - top[1]) * 0.75;
+    return [o.pixel[0] - half, top[1], o.pixel[0] + half, o.pixel[1] + 10];
+  }
+
+  const projected = new THREE.Vector3();
+  function placeTags() {
+    const { w, h } = size();
+    const put = (el, at) => {
+      projected.copy(at).project(camera);
+      const hidden = projected.z > 1 || Math.abs(projected.x) > 1.2 || Math.abs(projected.y) > 1.2;
+      el.style.display = hidden ? "none" : "flex";
+      if (!hidden) el.style.transform = `translate(${((projected.x + 1) / 2) * w}px, ${((1 - projected.y) / 2) * h}px) translate(-50%, -100%)`;
+    };
+    for (const s of signs.values()) put(s.el, s.at);
+    for (const a of agents.values()) put(a.tag.el, a.tagAt);
   }
 
   const agents = new Map();
@@ -1086,7 +1210,7 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     flickerLights(time.value);
     smoke?.update(dt);
     for (const o of sites.values()) o.sprite.update(dt);
-    placeLabels();
+    placeTags();
     dofPass.keepSharp([...[...agents.values()].map((a) => a.sprite.mesh.position), ...[...sites.values()].map((o) => o.pos)]);
     renderer.info.reset();
     gpuTimer.begin();
@@ -1146,6 +1270,8 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
   return {
     setState,
     setSites,
+    setSelected,
+    pick,
     get fps() {
       return fps;
     },
@@ -1164,7 +1290,7 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       composer.dispose?.();
       renderer.dispose();
       renderer.domElement.remove();
-      labelLayer.remove();
+      tagLayer.remove();
     },
   };
 }

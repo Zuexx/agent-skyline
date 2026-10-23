@@ -23,6 +23,7 @@ import City from "./city/City.jsx";
 import ZoneBanner from "./ui/ZoneBanner.jsx";
 import TopBar from "./ui/TopBar.jsx";
 import DetailPanel from "./ui/DetailPanel.jsx";
+import FolderPanel from "./ui/FolderPanel.jsx";
 import KpiCards from "./ui/KpiCards.jsx";
 import TaskTracker from "./ui/TaskTracker.jsx";
 import WorkList, { useTouchedFiles } from "./ui/WorkList.jsx";
@@ -270,6 +271,9 @@ export default function App() {
 
   // Index into city.buildings of the selected building (null = none).
   const [selected, setSelected] = useState(null);
+  // The painted town's clicked building: { id, files } (null = none). A file picked from its list
+  // opens the file's panel; closing that comes back to the list.
+  const [townFolder, setTownFolder] = useState(null);
   // Index of the working tree's paths, so Bash commands that name files light those buildings up.
   // The repo's files, for the painted town's construction sites (folders the painting lacks).
   const townPaths = useMemo(() => (liveCity ? liveCity.buildings.map((b) => b.path) : []), [liveCity]);
@@ -350,7 +354,11 @@ export default function App() {
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === "Escape") {
-        setSelected(null);
+        // the file panel first, then the town building's list
+        setSelected((s) => {
+          if (s == null) setTownFolder(null);
+          return null;
+        });
         setZoneMode(false);
         setScopeMode(false);
         setPickMode(false);
@@ -449,6 +457,17 @@ export default function App() {
   // tracker and the agent panel show, and the bottom-right list's tab.
   const tasks = useMemo(() => buildTasks(allFeed), [allFeed]);
   const latestTasks = useMemo(() => latestByAgent(tasks), [tasks]);
+  // The painted town's name tags and prompt bubbles.
+  const townNames = useMemo(
+    () => Object.fromEntries(agents.map((a) => [a.key, a.source === "watcher" ? t("source.watcher") : `${t(`source.${a.source}`).startsWith("source.") ? a.source : t(`source.${a.source}`)} ${a.n}`])),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [agents, prefs.locale]
+  );
+  const townPrompts = useMemo(() => {
+    const out = {};
+    for (const [key, task] of latestTasks) if (task.prompt) out[key] = { text: task.prompt, at: task.start };
+    return out;
+  }, [latestTasks]);
   const [agentFocus, setAgentFocus] = useState(null);
   const [listTab, setListTab] = useState("feed");
   const trackedTask = useMemo(() => {
@@ -619,6 +638,7 @@ export default function App() {
   // Select an agent: its task in the tracker, its panel on the right, the camera on its last file.
   const pickAgent = (key) => {
     setAgentFocus(key);
+    setTownFolder(null);
     setSelected(null);
     const i = indexByPath.get(latestTasks.get(key)?.lastPath);
     if (i != null && view) {
@@ -638,6 +658,7 @@ export default function App() {
   if (!liveCity || !view) return <Status>{t("app.loading")}</Status>;
 
   const selectedBuilding = selected != null ? city.buildings?.[selected] : null;
+  const repoName = String(liveCity.repoPath ?? "").split(/[\\/]/).filter(Boolean).pop() ?? "";
 
   return (
     <div
@@ -658,7 +679,22 @@ export default function App() {
       {/* A painted town pack (specs/10) replaces the 3D city with its painting; the panels stay. */}
       {pack.renderer === "painted" ? (
         <Suspense fallback={null}>
-          <PaintedTownView pack={pack} variant={variant} activity={activity} agentSeq={agentSeq} paths={townPaths} />
+          <PaintedTownView
+            pack={pack}
+            variant={variant}
+            activity={activity}
+            agentSeq={agentSeq}
+            paths={townPaths}
+            names={townNames}
+            prompts={townPrompts}
+            rootName={repoName}
+            folder={townFolder?.id ?? null}
+            onPickFolder={(id, files) => {
+              setSelected(null);
+              setTownFolder(id ? { id, files } : null);
+              if (id) setAgentFocus(null);
+            }}
+          />
         </Suspense>
       ) : (
       /* Keyed by theme: materials are created with the palette's colors, so a theme switch rebuilds the scene. */
@@ -891,6 +927,17 @@ export default function App() {
           name={agentName({ agent: agentFocus, source: latestTasks.get(agentFocus).source })}
           onFocusPath={(p) => focusOn(indexByPath.get(p))}
           onClose={() => setAgentFocus(null)}
+        />
+      )}
+      {townFolder && !selectedBuilding && picked.size === 0 && (
+        <FolderPanel
+          id={townFolder.id}
+          name={townFolder.id === "(root)" ? repoName || "(root)" : townFolder.id}
+          files={townFolder.files}
+          activity={activity.files}
+          site={!(pack.variants?.[variant]?.buildings ?? []).some((b) => b.id === townFolder.id)}
+          onFocusPath={(p) => focusOn(indexByPath.get(p))}
+          onClose={() => setTownFolder(null)}
         />
       )}
       {selectedBuilding && picked.size === 0 && (

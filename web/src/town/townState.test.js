@@ -45,6 +45,10 @@ describe("townState", () => {
       { key: "d", character: "hero", building: "web/src/lib", action: "write" },
     ]);
   });
+  it("gives the file watcher no character", () => {
+    const activity = { agents: { w: { path: "specs/a.md", ts: ago(1000), kind: "write", source: "watcher" } }, files: {} };
+    expect(townState(activity, { w: 1 }, IDS, NOW).agents).toEqual([]);
+  });
   it("sends quiet agents home", () => {
     const activity = { agents: { a: { path: "specs/a.md", ts: ago(ACTIVE_MS + 1), kind: "write" } }, files: {} };
     expect(townState(activity, { a: 1 }, IDS, NOW).agents[0].action).toBe("idle");
