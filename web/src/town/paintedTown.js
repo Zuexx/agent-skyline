@@ -392,11 +392,18 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
   }
   await Promise.all(Object.keys(pack.sprites).map(sheet));
 
+  const MAP_FRAGMENT_SHARP = THREE.ShaderChunk.map_fragment.replace("texture2D( map, vMapUv )", "texture2D( map, vMapUv, -1.0 )");
   /** A hand-painted sprite standing on its feet, turned toward the camera about Y, lit by the scene. */
   class Sprite {
     constructor(h) {
       this.h = h;
       this.mat = new THREE.MeshStandardMaterial({ transparent: true, alphaTest: 0.02, side: THREE.DoubleSide, roughness: 1, metalness: 0 });
+      // Drawn smaller than painted, the default mip choice smudges eyes and mouths; lean toward
+      // the sharper level.
+      this.mat.onBeforeCompile = (sh) => {
+        sh.fragmentShader = sh.fragmentShader.replace("#include <map_fragment>", MAP_FRAGMENT_SHARP);
+      };
+      this.mat.customProgramCacheKey = () => "sprite-sharp";
       this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), this.mat);
       this.mesh.renderOrder = 2;
       this.t = Math.random() * 2;
