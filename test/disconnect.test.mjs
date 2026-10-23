@@ -314,8 +314,8 @@ test("disconnectRepo also cleans subfolder settings.local.json, and lists hooks 
   assert.deepEqual(
     out.leftovers.map((l) => [l.file, l.events.sort()]),
     [
-      [shared, ["PostToolUse", "PreToolUse", "Stop"]],
-      [user, ["PostToolUse", "PreToolUse", "SessionStart", "Stop"]],
+      [shared, ["PostToolUse", "PreToolUse", "Stop", "UserPromptSubmit"]],
+      [user, ["PostToolUse", "PreToolUse", "SessionStart", "Stop", "UserPromptSubmit"]],
     ]
   );
   assert.equal(await readFile(user, "utf8"), userText, "the user's settings file is not touched");

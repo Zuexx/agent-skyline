@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { normalize } from "../lib/normalize.mjs";
+import { checkOutcome, normalize } from "../lib/normalize.mjs";
 
 const NOW = new Date("2026-10-09T08:00:00.000Z");
 const CWD_WIN = "D:\\Labs\\forgekit";
@@ -157,4 +157,24 @@ test("events carry a comparable repo root", () => {
 test("events name their source, claude-code by default", () => {
   assert.equal(normalize({}, NOW).source, "claude-code");
   assert.equal(normalize({}, NOW, null, "pi").source, "pi");
+});
+
+test("a prompt is kept as its first non-empty line, cut to 120 characters", () => {
+
+  const ev = normalize({ hook_event_name: "UserPromptSubmit", session_id: "s", prompt: "\n  Fix the login bug  \nsecond line" });
+  assert.equal(ev.kind, "prompt");
+  assert.equal(ev.detail, "Fix the login bug");
+  assert.equal(normalize({ hook_event_name: "UserPromptSubmit", prompt: "x".repeat(300) }).detail.length, 120);
+});
+
+test("check commands are marked with what their output said", () => {
+
+  const bash = (command, tool_response, hook_event_name = "PostToolUse") => normalize({ hook_event_name, tool_name: "Bash", tool_input: { command }, tool_response });
+  assert.deepEqual([bash("cd web && npm test", { stdout: "Tests  12 passed (12)" }).check, bash("cd web && npm test", { stdout: "Tests  12 passed (12)" }).outcome], [true, "passed"]);
+  assert.equal(bash("node --test test/", { stdout: "ℹ pass 3\nℹ fail 1" }).outcome, "failed");
+  assert.equal(bash("dotnet test", null, "PostToolUseFailure").outcome, "failed");
+  assert.equal(bash("cargo build", { stdout: "Compiling..." }).outcome, null);
+  assert.equal(bash("git status", { stdout: "" }).check, undefined);
+  assert.equal(checkOutcome({ stdout: "3 passed", interrupted: true }), null);
+  assert.equal(checkOutcome({ stdout: "ℹ pass 151\nℹ fail 0" }), "passed");
 });

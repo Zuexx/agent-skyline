@@ -51,7 +51,7 @@ test("hookSettings puts --root on every hook command and still recognises them a
   const root = process.platform === "win32" ? "C:\\work\\My Repo" : "/work/My Repo";
   const s = hookSettings({ autostart: true, port: 4500, open: true, root });
   const commands = Object.values(s.hooks).flatMap((groups) => groups.flatMap((g) => g.hooks.map((h) => h.command)));
-  assert.equal(commands.length, 4);
+  assert.equal(commands.length, 5);
   const want = `--root "${path.resolve(root).replace(/\\/g, "/")}"`;
   for (const c of commands) assert.ok(c.endsWith(want), c);
   assert.match(s.hooks.SessionStart[0].hooks[0].command, /session-start\.mjs" --port 4500 --open --root "/);
@@ -181,7 +181,7 @@ test("install-hooks.mjs <repo> writes --root <repo> into every hook command", as
   const { top } = await repoWithSubfolder(t);
   const out = execFileSync(process.execPath, [path.join(hooksDir, "..", "cli", "install-hooks.mjs"), top, "--autostart"], { encoding: "utf8" });
   const commands = Object.values(JSON.parse(out).hooks).flatMap((groups) => groups.flatMap((g) => g.hooks.map((h) => h.command)));
-  assert.equal(commands.length, 4);
+  assert.equal(commands.length, 5);
   for (const c of commands) assert.equal(rootArg(c.split(/\s+/).map((w) => w.replace(/^"|"$/g, ""))), path.resolve(top).replace(/\\/g, "/"), c);
 });
 
@@ -190,7 +190,7 @@ test("what `skyline` writes (connectRepoHooks) reports every hook to the repo it
   await connectRepoHooks(top, { port: 4500 });
   const settings = JSON.parse(await readFile(path.join(top, ".claude", "settings.local.json"), "utf8"));
   const commands = Object.values(settings.hooks).flatMap((groups) => groups.flatMap((g) => g.hooks.map((h) => h.command)));
-  assert.equal(commands.length, 4);
+  assert.equal(commands.length, 5);
   for (const c of commands) assert.ok(c.endsWith(` --root "${path.resolve(top).replace(/\\/g, "/")}"`), c);
   // cli/skyline.mjs cannot be run here (it builds the UI and opens a browser): it must write its hooks
   // through connectRepoHooks and nothing else.
