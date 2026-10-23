@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"D:/Labs/game-view-ideas/hooks/guard.mjs\"",
+            "command": "node \"D:/Labs/agent-projects/agent-skyline/hooks/guard.mjs\"",
             "timeout": 10
           }
         ]
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"D:/Labs/game-view-ideas/hooks/log-event.mjs\"",
+            "command": "node \"D:/Labs/agent-projects/agent-skyline/hooks/log-event.mjs\"",
             "timeout": 10
           }
         ]
@@ -29,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"D:/Labs/game-view-ideas/hooks/log-event.mjs\"",
+            "command": "node \"D:/Labs/agent-projects/agent-skyline/hooks/log-event.mjs\"",
             "timeout": 10
           }
         ]

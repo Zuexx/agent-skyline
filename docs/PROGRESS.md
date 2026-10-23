@@ -43,7 +43,7 @@ checked clean after every step).
    `node cli/install-hooks.mjs`.
 2. Start the server and open http://127.0.0.1:4477:
    ```
-   node D:\Labs\game-view-ideas\agent-skyline\server\server.mjs --repo D:\Labs\forgekit
+   node D:\Labs\agent-projects\agent-skyline\server\server.mjs --repo D:\Labs\forgekit
    ```
 3. Work in forgekit with Claude Code or pi (with `adapters/pi/agent-skyline.js` loaded); the city shows
    reads and writes live. Text summary: `node cli/report.mjs`.

@@ -34,7 +34,7 @@
 1. hook 已裝在 `D:\Labs\forgekit\.claude\settings.local.json`(被 forgekit 的 .gitignore 排除)。要移除監看,刪掉這個檔案即可。其他 repo 用 `node cli/install-hooks.mjs` 安裝。
 2. 啟動伺服器,打開 http://127.0.0.1:4477:
    ```
-   node D:\Labs\game-view-ideas\agent-skyline\server\server.mjs --repo D:\Labs\forgekit
+   node D:\Labs\agent-projects\agent-skyline\server\server.mjs --repo D:\Labs\forgekit
    ```
 3. 在 forgekit 開 Claude Code 或 pi(載入 `adapters/pi/agent-skyline.js`)工作,城市會即時顯示讀寫。文字摘要:`node cli/report.mjs`。
 
