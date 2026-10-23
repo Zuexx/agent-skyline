@@ -74,3 +74,15 @@ test("/api/themes and /themes/<id>/<file> over HTTP", async (t) => {
   assert.equal((await fetch(base + "/themes/quest/notes.js")).status, 404);
   assert.equal((await fetch(base + "/themes/quest/%2e%2e/%2e%2e/secret.json")).status, 404);
 });
+
+test("a painted town pack needs its painting, depth and buildings, not a palette", async () => {
+  const { manifestErrors } = await import("../lib/themeManifest.mjs");
+  const painted = (v) => ({ id: "town", renderer: "painted", variants: { night: v } });
+  const good = { background: { albedo: "bg/night.webp" }, depth: "bg/night_depth.png", buildings: [] };
+  assert.deepEqual(manifestErrors(painted(good), "town"), []);
+  assert.deepEqual(manifestErrors(painted({ ...good, palette: { background: "#000" } }), "town"), []);
+  assert.match(manifestErrors(painted({ ...good, depth: undefined }), "town").join(), /background.albedo and depth/);
+  assert.match(manifestErrors(painted({ ...good, buildings: undefined }), "town").join(), /no buildings/);
+  assert.match(manifestErrors(painted({ ...good, palette: [] }), "town").join(), /palette must be an object/);
+  assert.match(manifestErrors({ id: "x", renderer: "blocks", variants: { night: {} } }, "x").join(), /no palette/);
+});

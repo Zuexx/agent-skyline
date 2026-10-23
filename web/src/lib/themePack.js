@@ -14,7 +14,7 @@ export function validatePack(json, id, fallback) {
   if (errors.length) return { ok: false, pack: null, errors };
   const base = (name) => (fallback.variants[name] ?? Object.values(fallback.variants)[0]).palette;
   const variants = Object.fromEntries(
-    Object.entries(json.variants).map(([name, v]) => [name, { ...v, palette: { ...base(name), ...v.palette } }])
+    Object.entries(json.variants).map(([name, v]) => [name, { ...v, palette: { ...base(name), ...(v.palette ?? {}) } }])
   );
   return { ok: true, pack: { ...json, variants }, errors: [] };
 }

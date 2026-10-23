@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { Canvas, useThree } from "@react-three/fiber";
 import { MapControls, OrthographicCamera } from "@react-three/drei";
@@ -7,6 +7,8 @@ import CameraRig from "./city/CameraRig.jsx";
 import PostFx from "./city/PostFx.jsx";
 import SpriteLights from "./city/SpriteLights.jsx";
 import { usePackAtlas } from "./lib/usePackAtlas.js";
+// three.js town renderer, loaded only when a painted pack is chosen
+const PaintedTownView = lazy(() => import("./town/PaintedTownView.jsx"));
 import { usePackCharacters } from "./lib/usePackCharacters.js";
 import TurnButtons from "./ui/TurnButtons.jsx";
 import DemoBridge from "./city/DemoBridge.jsx";
@@ -647,7 +649,13 @@ export default function App() {
       onPointerMove={boxMove}
       onPointerUp={boxUp}
     >
-      {/* Keyed by theme: materials are created with the palette's colors, so a theme switch rebuilds the scene. */}
+      {/* A painted town pack (specs/10) replaces the 3D city with its painting; the panels stay. */}
+      {pack.renderer === "painted" ? (
+        <Suspense fallback={null}>
+          <PaintedTownView pack={pack} variant={variant} activity={activity} agentSeq={agentSeq} />
+        </Suspense>
+      ) : (
+      /* Keyed by theme: materials are created with the palette's colors, so a theme switch rebuilds the scene. */
       <Canvas key={theme.name} flat shadows={litSprites} onPointerMissed={() => setSelected(null)}>
         <color attach="background" args={[theme.background]} />
         {litSprites ? (
@@ -714,7 +722,8 @@ export default function App() {
         />
         <PostFx post={pack.post ?? null} />
       </Canvas>
-      <LabelLayer bus={labelBus} grouped={view.grouped} />
+      )}
+      {pack.renderer !== "painted" && <LabelLayer bus={labelBus} grouped={view.grouped} />}
       {fixedCamera && <TurnButtons onTurn={(dir) => turnRef.current?.(dir)} />}
       <TopBar
         repo={liveCity.repo ?? ""}
