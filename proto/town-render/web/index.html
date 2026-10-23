@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="data:," />
+    <title>Town renderer (web)</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #0a1022; overflow: hidden; }
+      canvas { display: block; }
+      #hud { position: fixed; left: 8px; top: 6px; font: 12px/1.4 system-ui, sans-serif; color: #fff; text-shadow: 0 1px 2px #000; pointer-events: none; }
+    </style>
+    <script type="importmap">
+      { "imports": { "three": "/three/build/three.module.js", "three/addons/": "/three/examples/jsm/" } }
+    </script>
+  </head>
+  <body>
+    <div id="hud"></div>
+    <script type="module" src="./town.js"></script>
+  </body>
+</html>

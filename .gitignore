@@ -12,3 +12,6 @@ data/
 
 # Reference teardowns (third-party screenshots) stay local
 waretrack/
+
+# Prototype engine caches
+proto/town-render/godot/.godot/
