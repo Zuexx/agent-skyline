@@ -423,7 +423,10 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       this.normal = s.normal.clone();
       this.mat.map = this.map;
       this.mat.normalMap = this.normal;
-      this.mat.normalScale.set(0.7, 0.7);
+      // Characters keep the shading painted into them: the generated normal map has no eyes or
+      // mouth, and relit faces grew a shaded snout (checked 2026-10-23). Props keep the relief.
+      const n = /^(hero|mage|priest)_/.test(name) ? 0 : 0.7;
+      this.mat.normalScale.set(n, n);
       this.mat.needsUpdate = true;
       this.meta = meta;
       const H = (this.h * meta.cell[1]) / meta.char_h;
