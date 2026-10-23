@@ -8,6 +8,7 @@ import { Pass, FullScreenQuad } from "three/addons/postprocessing/Pass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { layoutToPixel } from "./townLayout.js";
+import { findPath, invert3, makeGrid } from "./townPaths.js";
 
 
 /**
@@ -30,7 +31,11 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
   const SPILL_MIN = 2.0;
   const CHAR_H = 2.193; // metres; the PoC's hero height
   const BIG = 2.25;
-  const WALK_SPEED = 7; // metres per second
+  // Walking: the clips step about 0.7 body heights a second at their own fps; played 1.6x for a brisk
+  // walk, the ground speed matches so feet do not slide.
+  const WALK_RATE = 1.6;
+  const CLIPS_FACING_LEFT = new Set(["mage_walk"]); // the others face right (art pipeline, 2026-10-23)
+  const WALK_SPEED_PER_H = 0.7 * WALK_RATE; // body heights per second
 
   const hud = opts.hud ?? null;
   const showHud = !!hud;
@@ -40,7 +45,9 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
   // ---------------------------------------------------------------- renderer, scene, camera
   const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
   renderer.info.autoReset = false;
-  renderer.setPixelRatio(1);
+  // The screen's real pixel density (capped), so a scaled display (150 %) is not stretched soft.
+  const PIXEL_RATIO = Math.min(window.devicePixelRatio || 1, 2);
+  renderer.setPixelRatio(PIXEL_RATIO);
   const size = () => (fixedSize ? { w: fixedSize[0], h: fixedSize[1] } : { w: Math.max(1, container.clientWidth), h: Math.max(1, container.clientHeight) });
   renderer.setSize(size().w, size().h);
   renderer.domElement.style.display = "block";
@@ -221,6 +228,19 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     const [cx, cy] = V.principal;
     return new THREE.Vector3(((x + 0.5 - cx) / V.focalPx) * z, (-(y + 0.5 - cy) / V.focalPx) * z, -z).applyMatrix4(B);
   }
+
+  // The painting pixel a world point is seen at (the inverse of groundAt's projection).
+  const Binv = B.clone().invert();
+  const camV = new THREE.Vector3();
+  function pixelOf(p) {
+    camV.copy(p).applyMatrix4(Binv);
+    const z = -camV.z;
+    return [(camV.x * V.focalPx) / z + V.principal[0] - 0.5, (-camV.y * V.focalPx) / z + V.principal[1] - 0.5];
+  }
+  // Layout metres <-> the painted ground, through the pack's homography (null without one).
+  const pixelToLayout = V.layoutToPixel ? invert3(V.layoutToPixel) : null;
+  const layoutOf = (p) => (pixelToLayout ? layoutToPixel(pixelToLayout, pixelOf(p)) : null);
+  const groundOfLayout = (l) => groundAt(...layoutToPixel(V.layoutToPixel, l));
 
   // ---------------------------------------------------------------- lights (light from the upper left, spec 0.8)
   // three's lights are PI dimmer than Godot's for the same number (diffuse = albedo / PI * irradiance)
@@ -418,8 +438,14 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     }
     update(dt) {
       if (!this.meta) return;
-      this.t += dt;
-      if (this.meta.frames > 1) this.frame(Math.floor(this.t * this.meta.fps) % this.meta.frames);
+      this.t += dt * (this.rate ?? 1);
+      if (this.meta.frames > 1) {
+        // A walk clip starts and ends standing: loop only its stepping frames (loop_range from the
+        // art pipeline, else the middle 80 %).
+        const walk = this.name?.endsWith("_walk");
+        const [a, b] = this.meta.loop_range ?? (walk ? [Math.round(this.meta.frames * 0.1), Math.round(this.meta.frames * 0.9)] : [0, this.meta.frames]);
+        this.frame(a + (Math.floor(this.t * this.meta.fps) % (b - a)));
+      }
       const p = this.mesh.position;
       this.mesh.rotation.y = Math.atan2(camera.position.x - p.x, camera.position.z - p.z);
     }
@@ -504,34 +530,55 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       this.color = new THREE.Color(COLORS[a.character] ?? "#ffffff");
       this.pos = doorSpot(a.building, a.character, a.action);
       this.target = this.pos.clone();
+      this.path = [];
       this.sprite = new Sprite(this.h);
       this.shadow = groundPlane(this.h * 0.64, this.h * 0.64 * 2.5, glowMat(new THREE.Color(0, 0, 0), 1, false, 0.45), this.pos);
       this.ring = groundPlane(this.h * 0.72, this.h * 0.72 * 2.5, glowMat(this.color, night ? 2.5 : 1.6, true), this.pos);
       this.light = omni(this.color, night ? 0.8 : 0.3, this.h * 1.2, this.pos, 1);
       this.alert = null;
       this.sparks = null;
-      this.facingLeft = true;
+      this.facingLeft = false;
       this.state = a;
     }
     sync(a) {
       this.state = a;
-      this.target = doorSpot(a.building, a.character, a.action);
+      const target = doorSpot(a.building, a.character, a.action);
+      if (target.distanceTo(this.target) < 0.05) return;
+      this.target = target;
+      this.path = routeBetween(this.pos, target);
     }
     update(dt) {
-      const d = this.target.clone().sub(this.pos);
-      const walking = d.length() > 0.05;
+      // Walk the route: a fixed ground speed, feet kept on the painted ground.
+      let left = WALK_SPEED_PER_H * this.h * dt;
+      const before = this.pos.clone();
+      while (left > 0 && this.path.length) {
+        const d = this.path[0].clone().sub(this.pos);
+        const len = d.length();
+        if (len <= left) {
+          this.pos.copy(this.path.shift());
+          left -= len;
+        } else {
+          this.pos.add(d.setLength(left));
+          left = 0;
+        }
+      }
+      const walking = this.path.length > 0;
       if (walking) {
-        const step = Math.min(d.length(), WALK_SPEED * (big ? BIG : 1) * dt);
-        // screen direction decides which way the sprite faces
-        const before = this.pos.clone().project(camera).x;
-        this.pos.add(d.setLength(step));
-        this.facingLeft = this.pos.clone().project(camera).x < before;
+        const [px, py] = pixelOf(this.pos);
+        const g = groundAt(px, py);
+        if (g) this.pos.copy(g);
+        // face the way it moves on screen; ignore tiny sideways changes (walking toward the camera)
+        const [bx] = pixelOf(before);
+        const dx = px - bx;
+        if (Math.abs(dx) > 0.15 * dt * 60) this.facingLeft = dx < 0;
       }
       const clips = CLIP[this.character] ?? {};
       const clip = walking ? clips.walk : clips[this.state.action];
       const name = clip ?? `${this.character}_idle`;
-      // sheets face left; mirror when walking right
-      this.sprite.set(name, walking && !this.facingLeft);
+      // mirror when the clip faces the other way than the walk (sheet "faces", else known defaults)
+      const facesLeft = (pack.sprites[name]?.faces ?? (CLIPS_FACING_LEFT.has(name) ? "left" : "right")) === "left";
+      this.sprite.set(name, walking && this.facingLeft !== facesLeft);
+      this.sprite.rate = walking ? WALK_RATE : 1;
       this.sprite.mesh.position.copy(this.pos);
       this.sprite.update(dt);
       const off = new THREE.Vector3(this.h * 0.25, 0.03, this.h * 0.1);
@@ -623,6 +670,13 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
   Object.assign(labelLayer.style, { position: "absolute", inset: "0", pointerEvents: "none", overflow: "hidden" });
   container.appendChild(labelLayer);
   const sites = new Map(); // id -> { sprite, label, pos }
+  let grid = null;
+  function rebuildGrid() {
+    if (!pixelToLayout) return;
+    const houses = V.buildings.filter((b) => b.layout).map((b) => b.layout);
+    for (const o of sites.values()) houses.push(o.lot);
+    grid = makeGrid(houses);
+  }
   function setSites(list = []) {
     const want = new Map();
     for (const s of list) {
@@ -659,11 +713,31 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
         whiteSpace: "nowrap",
       });
       labelLayer.appendChild(label);
-      sites.set(id, { sprite, label, pos, pixel, top: pos.clone().add(new THREE.Vector3(0, sprite.h * 1.15, 0)) });
+      sites.set(id, { sprite, label, pos, pixel, lot: list.find((s) => s.id === id).lot, top: pos.clone().add(new THREE.Vector3(0, sprite.h * 1.15, 0)) });
       buildings.set(id, { id, pixel, pos, site: true });
     }
+    rebuildGrid();
   }
   const projected = new THREE.Vector3();
+  // The route on the painted ground from world point `a` to `b`: world points about a metre apart,
+  // along the streets and around houses (townPaths.js); a straight line without a layout.
+  function routeBetween(a, b) {
+    const la = layoutOf(a);
+    const lb = layoutOf(b);
+    if (!grid || !la || !lb) return [b.clone()];
+    const pts = findPath(grid, la, lb);
+    const out = [];
+    for (let i = 1; i < pts.length; i++) {
+      const [p, q] = [pts[i - 1], pts[i]];
+      const n = Math.max(1, Math.ceil(Math.hypot(q[0] - p[0], q[1] - p[1]) / 1));
+      for (let k = 1; k <= n; k++) {
+        const g = groundOfLayout([p[0] + ((q[0] - p[0]) * k) / n, p[1] + ((q[1] - p[1]) * k) / n]);
+        if (g) out.push(g);
+      }
+    }
+    out.push(b.clone());
+    return out;
+  }
   function placeLabels() {
     const { w, h } = size();
     for (const o of sites.values()) {
@@ -732,6 +806,7 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     if (view === "close") dd = (dd + buildings.get("specs").pos.length()) / 2;
     return { near: dd * 0.8, far: dd * 1.15, amount: 0.09 };
   }
+  const tmpV = new THREE.Vector3();
   class SceneDofPass extends Pass {
     constructor() {
       super();
@@ -791,6 +866,16 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
         }),
       );
       this.amount = band.amount;
+      this.band = band;
+    }
+    // Characters and sites carry the information: the sharp band always reaches the nearest of them
+    // (one standing in front of its house would otherwise fall into the blurred foreground).
+    keepSharp(points) {
+      let near = this.band.near;
+      for (const p of points) near = Math.min(near, -tmpV.copy(p).applyMatrix4(camera.matrixWorldInverse).z * 0.85);
+      const u = this.quad.material.uniforms;
+      u.near.value = near;
+      u.nearT.value = near * 0.35;
     }
     setSize(w, h) {
       this.rt.setSize(w, h);
@@ -808,8 +893,9 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
   }
   const useDof = opts.dof !== false;
   const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType }));
-  composer.setPixelRatio(1);
-  composer.addPass(new SceneDofPass());
+  composer.setPixelRatio(PIXEL_RATIO);
+  const dofPass = new SceneDofPass();
+  composer.addPass(dofPass);
   const { w: W0, h: H0 } = size();
   composer.addPass(new UnrealBloomPass(new THREE.Vector2(W0, H0), night ? 0.28 : 0.12, 0.3, 1.0));
   composer.addPass(new OutputPass());
@@ -868,6 +954,7 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     for (const a of agents.values()) a.update(dt);
     for (const o of sites.values()) o.sprite.update(dt);
     placeLabels();
+    dofPass.keepSharp([...[...agents.values()].map((a) => a.sprite.mesh.position), ...[...sites.values()].map((o) => o.pos)]);
     renderer.info.reset();
     gpuTimer.begin();
     composer.render(dt);

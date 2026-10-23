@@ -16,8 +16,9 @@ export default function PaintedTownView({ pack, variant, activity, agentSeq, pat
   const [error, setError] = useState(null);
   const now = useNow(10_000); // quiet agents go idle even without new events
   const town = useMemo(() => townBuildings(paths, pack.variants[variant]?.buildings ?? [], pack.lots ?? []), [paths, pack, variant]);
-  const buildingIds = useMemo(() => town.map((b) => b.id), [town]);
-  const sites = useMemo(() => town.filter((b) => !b.painted).map((b) => ({ id: b.id, lot: b.lot })), [town]);
+  // A new folder with no lot left has no site: its activity goes to the painted folder above it.
+  const buildingIds = useMemo(() => town.filter((b) => b.painted || b.lot).map((b) => b.id), [town]);
+  const sites = useMemo(() => town.filter((b) => !b.painted && b.lot).map((b) => ({ id: b.id, lot: b.lot })), [town]);
   const state = useMemo(() => townState(activity, agentSeq, buildingIds, now), [activity, agentSeq, buildingIds, now]);
   const stateRef = useRef(state);
   stateRef.current = state;
