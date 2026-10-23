@@ -7,6 +7,7 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { Pass, FullScreenQuad } from "three/addons/postprocessing/Pass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import { layoutToPixel } from "./townLayout.js";
 
 
 /**
@@ -14,9 +15,11 @@ import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
  * `container`. `variant`: "night" | "day"; `view`: "pano" | "close" | "priest". `initialState` /
  * setState(): { agents: [{ key, character, building, action }], recent: [building ids] } (see
  * townState.js). opts: { hud: element for an fps line, opacity, dof, edges, size: [w, h], bench: s,
- * onBench(result) }. Resolves to { setState, fps, dispose }.
+ * onBench(result) }. Resolves to { setState, setSites, fps, dispose }. setSites([{ id, lot: [x, z] }]):
+ * folders the painting does not have, drawn as construction sites on the pack's open lots
+ * (townLayout.js); agents and effects then treat them like buildings.
  */
-export async function createPaintedTown({ container, pack, base, variant = "night", view = "pano", initialState = null, opts = {} }) {
+export async function createPaintedTown({ container, pack, base, variant = "night", view = "pano", initialState = null, initialSites = [], opts = {} }) {
   const variantName = variant;
   const benchS = Number(opts.bench ?? 0);
   const fixedSize = opts.size ?? null;
@@ -612,6 +615,65 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     }
   }
 
+  // ---------------------------------------------------------------- construction sites (folders the painting lacks)
+  // Until the art pipeline delivers the "construction" sprite, the scaffold stands in.
+  const SITE_SPRITE = pack.sprites.construction ? "construction" : "scaffold";
+  const SITE_W = 5.5; // metres across
+  const labelLayer = document.createElement("div");
+  Object.assign(labelLayer.style, { position: "absolute", inset: "0", pointerEvents: "none", overflow: "hidden" });
+  container.appendChild(labelLayer);
+  const sites = new Map(); // id -> { sprite, label, pos }
+  function setSites(list = []) {
+    const want = new Map();
+    for (const s of list) {
+      if (!s.lot || !V.layoutToPixel) continue;
+      const pixel = layoutToPixel(V.layoutToPixel, s.lot);
+      const pos = groundAt(pixel[0], pixel[1]);
+      if (pos) want.set(s.id, { pixel, pos });
+    }
+    for (const [id, o] of sites) {
+      if (want.has(id) && want.get(id).pixel.every((v, i) => Math.abs(v - o.pixel[i]) < 0.5)) continue;
+      o.sprite.remove();
+      o.label.remove();
+      buildings.delete(id);
+      sites.delete(id);
+    }
+    for (const [id, { pixel, pos }] of want) {
+      if (sites.has(id)) continue;
+      const meta = pack.sprites[SITE_SPRITE];
+      const sprite = new Sprite((SITE_W * meta.char_h) / (meta.cell[0] - 12));
+      sprite.set(SITE_SPRITE);
+      sprite.mesh.position.copy(pos);
+      const label = document.createElement("div");
+      label.textContent = id;
+      Object.assign(label.style, {
+        position: "absolute",
+        left: "0",
+        top: "0",
+        padding: "2px 8px",
+        borderRadius: "6px",
+        background: "rgba(20,24,40,0.78)",
+        border: "1px dashed rgba(255,214,120,0.9)",
+        color: "#fff",
+        font: "600 12px system-ui, sans-serif",
+        whiteSpace: "nowrap",
+      });
+      labelLayer.appendChild(label);
+      sites.set(id, { sprite, label, pos, pixel, top: pos.clone().add(new THREE.Vector3(0, sprite.h * 1.15, 0)) });
+      buildings.set(id, { id, pixel, pos, site: true });
+    }
+  }
+  const projected = new THREE.Vector3();
+  function placeLabels() {
+    const { w, h } = size();
+    for (const o of sites.values()) {
+      projected.copy(o.top).project(camera);
+      const hidden = projected.z > 1 || Math.abs(projected.x) > 1.2 || Math.abs(projected.y) > 1.2;
+      o.label.style.display = hidden ? "none" : "block";
+      if (!hidden) o.label.style.transform = `translate(${((projected.x + 1) / 2) * w}px, ${((1 - projected.y) / 2) * h}px) translate(-50%, -100%)`;
+    }
+  }
+
   const agents = new Map();
   const fx = new BuildingFx();
   let live = { agents: [], recent: [] };
@@ -635,6 +697,7 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     fx.update(blocked, writing, lit);
     reliefMat.uniforms.readEnergy.value = live.agents.some((a) => a.action === "read") ? (night ? 2.2 : 1.4) : 0;
   }
+  setSites(initialSites);
   setState(initialState);
 
   // ---------------------------------------------------------------- camera views
@@ -803,6 +866,8 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     time.value += dt;
     reliefMat.uniforms.time.value = time.value;
     for (const a of agents.values()) a.update(dt);
+    for (const o of sites.values()) o.sprite.update(dt);
+    placeLabels();
     renderer.info.reset();
     gpuTimer.begin();
     composer.render(dt);
@@ -860,6 +925,7 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
 
   return {
     setState,
+    setSites,
     get fps() {
       return fps;
     },
@@ -878,6 +944,7 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       composer.dispose?.();
       renderer.dispose();
       renderer.domElement.remove();
+      labelLayer.remove();
     },
   };
 }

@@ -69,6 +69,8 @@ A folder in the theme pack format (`06-themes.md`), `renderer: "painted"`:
 | `buildings` | `[{ id, screen: [u, v], world: [x, y, z], height, door: [x, y, z], windowIndex }]` — `screen` is the front-bottom centre in the painting (0–1), `world` the same point in 3D; the renderer anchors scaffolds, flags, characters and labels here |
 | `lights` | `[{ kind: "lamp" | "fire" | "window", position, color, intensity, range }]`, detected from the night painting |
 | `sprites` | characters (`hero`, `mage`, `priest`, …) with poses and frames, and effects (scaffold per size, barrier, `!`, `?`, `zzz`, magic circle, flags…), each with `pivot` and `pixelsPerMetre` |
+| `buildings[].layout` | where the layout put the folder, `[x, z]` metres |
+| `layoutToPixel` | 3×3 homography from layout metres to depth-map pixels, fitted on the painted buildings |
 | `provenance` | models, weights, seeds, prompts, `layoutHash` — enough to repaint the same way |
 
 **No meshes in the pack.** The proof of concept shipped a 90 MB relief mesh per variant; the
@@ -93,6 +95,12 @@ engine can read it.
 - A new or removed folder shows at once as a sprite placeholder building on open ground
   (09 §11); the town is repainted later, when the user asks or when the differences pass a
   threshold (to be set).
+- Until then (built 2026-10-23, `web/src/town/townLayout.js`): the pack lists `lots`, open ground in
+  the painting checked by eye (layout metres, top level of `theme.json`). Each folder the painting lacks
+  takes the free lot nearest to where its street would continue and shows as a construction site with
+  its name. When the lots run out, the extra folders have no site and the town needs a repaint.
+  Folders are grouped as the painting was (split a folder over 30 files into subfolders), and a
+  subfolder under 5 files stays in the folder above (user decision); a painted folder keeps its house.
 - Repainting runs in the background through the pipeline's command line; the old pack stays in use
   until the new one passes the checks below.
 

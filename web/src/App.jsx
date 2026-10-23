@@ -271,6 +271,8 @@ export default function App() {
   // Index into city.buildings of the selected building (null = none).
   const [selected, setSelected] = useState(null);
   // Index of the working tree's paths, so Bash commands that name files light those buildings up.
+  // The repo's files, for the painted town's construction sites (folders the painting lacks).
+  const townPaths = useMemo(() => (liveCity ? liveCity.buildings.map((b) => b.path) : []), [liveCity]);
   const cmdIndex = useMemo(() => (liveCity ? pathIndex(liveCity.buildings.map((b) => b.path)) : null), [liveCity]);
   // Which stretch of the log the city shows: the latest working session by default (a gap of two
   // quiet hours starts a new one), today, a past session, or everything. See lib/sessions.js.
@@ -656,7 +658,7 @@ export default function App() {
       {/* A painted town pack (specs/10) replaces the 3D city with its painting; the panels stay. */}
       {pack.renderer === "painted" ? (
         <Suspense fallback={null}>
-          <PaintedTownView pack={pack} variant={variant} activity={activity} agentSeq={agentSeq} />
+          <PaintedTownView pack={pack} variant={variant} activity={activity} agentSeq={agentSeq} paths={townPaths} />
         </Suspense>
       ) : (
       /* Keyed by theme: materials are created with the palette's colors, so a theme switch rebuilds the scene. */
