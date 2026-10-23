@@ -13,19 +13,39 @@ editor like a second monitor's dashboard:
 Status: draft, 2026-10-23. The browser keeps working as it does today; the window is another way
 to open the same page.
 
-## Shell
+## Shell: decided by measurement, not up front
 
-Electron (recommended): `BrowserWindow` has `alwaysOnTop`, `setOpacity()`, `setIgnoreMouseEvents()`
-and resizing built in on Windows and macOS. It is installed with npm like the rest of the project,
-with no other toolchain. It costs about as much memory as the browser tab it replaces.
+Two candidates, neither chosen yet. Both get a minimal prototype (8A) that loads the running city
+and implements pin, opacity, resize and click-through; the choice follows the numbers.
 
-Tauri was considered: smaller and lighter (it uses the WebView2 already on Windows 11), but it needs
-a Rust toolchain to build and has no built-in window opacity. Revisit it if memory becomes the
-limit.
+| Candidate | Expected (unverified until 8A) |
+|---|---|
+| Electron | Bundles Chromium; installs with npm, no other toolchain; window APIs for always-on-top, opacity and click-through are documented |
+| Tauri | Uses the system WebView2 (Windows) / WKWebView (macOS); smaller install, likely less memory; needs a Rust toolchain to build; opacity and click-through support to be checked |
+
+### 8A: prototype both, measure, then choose
+
+Measured on this machine (Windows 11, RTX 4090) with the same repo, the city open at overview zoom:
+
+| Measure | How |
+|---|---|
+| Install size and build time | Size of the built app; time for a clean build |
+| Memory | Working set of all the app's processes after 2 minutes idle and after 2 minutes of live events |
+| CPU / GPU | Average while idle and while events stream (`bench/` event replay) |
+| Frame rate | The city's own fps counter at 20,000 files (`bench/perf.mjs` repo) |
+| Startup | Launch to first rendered frame |
+| Pin | Stays above other windows, including a full-screen editor |
+| Opacity | Works on Windows and macOS, adjustable live, and what the 3D canvas looks like see-through |
+| Click-through | Clicks reach the window below; a shortcut turns it back off |
+| Resize | Smooth, canvas re-fits, no flicker |
+| Toolchain cost | What a new machine must install to build it |
+
+Each row records the real result, or "not tested" with the reason. The results go into this file,
+followed by the choice and why. Whichever is not chosen keeps its prototype on a branch.
 
 ## Pieces
 
-- `desktop/`: an Electron app with its own `package.json` (kept out of the root package so the
+- `desktop/`: the chosen shell, with its own `package.json` (kept out of the root package so the
   hooks and server stay dependency-free). It starts or finds the repo's server (`lib/autostart.mjs`)
   and loads its URL; it does not bundle its own copy of the web app.
 - `skyline --window` opens the window instead of a browser tab; `skyline` keeps opening the
