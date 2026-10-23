@@ -355,7 +355,7 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       fragmentShader: `uniform vec3 color; uniform float energy, ring, alpha; varying vec2 vUv;
         void main() {
           float d = length(vUv - 0.5) * 2.0;
-          float a = ring > 0.5 ? smoothstep(1.0, 0.82, d) * (0.25 + 0.75 * smoothstep(0.55, 0.85, d)) : smoothstep(1.0, 0.2, d);
+          float a = ring > 0.5 ? smoothstep(1.0, 0.82, d) * (0.25 + 0.75 * smoothstep(0.55, 0.85, d)) : pow(clamp(1.0 - d, 0.0, 1.0), 1.8);
           gl_FragColor = vec4(color * energy, a * alpha);
         }`,
       transparent: true,
@@ -561,7 +561,8 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       this.path = [];
       this.sprite = new Sprite(this.h);
       this.shadow = footEllipse(this.h * 0.5, glowMat(new THREE.Color(0, 0, 0), 1, false, 0.4));
-      this.ring = footEllipse(this.h * 0.55, glowMat(this.color, night ? 2.5 : 1.6, true));
+      // a soft pool of the agent's colour (the user's choice over a bright ring, 2026-10-23)
+      this.ring = footEllipse(this.h * 0.75, glowMat(this.color, night ? 1.4 : 1.1, false, night ? 0.75 : 0.65));
       this.light = omni(this.color, night ? 0.8 : 0.3, this.h * 1.2, this.pos, 1);
       this.alert = null;
       this.sparks = null;
