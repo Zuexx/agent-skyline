@@ -609,6 +609,7 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
         this.idleName = Math.random() < 0.55 ? base : pool[Math.floor(Math.random() * pool.length)];
         const m = pack.sprites[this.idleName];
         const once = m.frames / m.fps;
+        this.sprite.t = 0; // start the new clip at its first frame
         // the plain idle runs a few loops; the others once
         this.idleLeft = this.idleName === base ? once * (2 + Math.floor(Math.random() * 3)) : once;
       }
