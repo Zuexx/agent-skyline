@@ -71,7 +71,8 @@ export function buildTasks(events) {
     }
     task.lastTs = t;
     const path = ev.paths?.[0] ?? null;
-    if (path) task.lastPath = path;
+    // Only repo paths name a building; a file outside the repo stays absolute.
+    if (path && !path.startsWith("/") && !/^[a-z]:\//i.test(path)) task.lastPath = path;
     if (ev.kind === "write") {
       for (const p of ev.paths ?? []) task.writes.add(p);
       reach(task, "changing", t); // also after checking: the agent went back to fix something

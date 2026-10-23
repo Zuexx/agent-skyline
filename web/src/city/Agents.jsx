@@ -13,7 +13,8 @@ const FADE_MS = 60 * 1000;
 
 // One marker per agent whose last event names a known building.
 // `roofs` maps building path -> [x, roofY, z] in the city group's coordinates.
-export default function Agents({ agents, roofs }) {
+// Clicking a marker selects the agent (`onSelect(key)`); the selected one is drawn larger.
+export default function Agents({ agents, roofs, selected = null, onSelect = null }) {
   const now = Date.now();
   const visible = Object.entries(agents ?? {}).filter(([, a]) => {
     if (a.source === "watcher") return false; // no author to place: the watcher has no marker
@@ -24,14 +25,14 @@ export default function Agents({ agents, roofs }) {
   return (
     <group>
       {visible.map(([key, a]) => (
-        <AgentMarker key={key} agentKey={key} target={roofs.get(a.path)} ts={a.ts} source={a.source} />
+        <AgentMarker key={key} agentKey={key} target={roofs.get(a.path)} ts={a.ts} source={a.source} selected={key === selected} onSelect={onSelect} />
       ))}
     </group>
   );
 }
 
 // Claude Code is an upside-down cone; any other agent kind is a diamond, so kinds read apart.
-function AgentMarker({ agentKey, target, ts, source }) {
+function AgentMarker({ agentKey, target, ts, source, selected, onSelect }) {
   const isClaude = !source || source === "claude-code";
   const group = useRef(null);
   const material = useRef(null);
@@ -70,7 +71,7 @@ function AgentMarker({ agentKey, target, ts, source }) {
   });
 
   return (
-    <group ref={group}>
+    <group ref={group} scale={selected ? 1.6 : 1}>
       {/* Upside-down cone: the tip points at the building being worked on. */}
       <mesh
         rotation-x={isClaude ? Math.PI : 0}
@@ -79,6 +80,10 @@ function AgentMarker({ agentKey, target, ts, source }) {
           setHover(true);
         }}
         onPointerOut={() => setHover(false)}
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect?.(agentKey);
+        }}
       >
         {/* Sized to read at the fit-to-city zoom, where a building footprint is only a few pixels. */}
         {isClaude ? <coneGeometry args={[1.2, 2.6, 20]} /> : <octahedronGeometry args={[1.3, 0]} />}

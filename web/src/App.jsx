@@ -9,11 +9,14 @@ import DemoBridge from "./city/DemoBridge.jsx";
 // `?demo` exposes a tiny hook for scripted recordings (see city/DemoBridge.jsx).
 const DEMO = typeof location !== "undefined" && new URLSearchParams(location.search).has("demo");
 import City from "./city/City.jsx";
-import Legend from "./ui/Legend.jsx";
 import ZoneBanner from "./ui/ZoneBanner.jsx";
 import TopBar from "./ui/TopBar.jsx";
 import DetailPanel from "./ui/DetailPanel.jsx";
-import Feed from "./ui/Feed.jsx";
+import KpiCards from "./ui/KpiCards.jsx";
+import TaskTracker from "./ui/TaskTracker.jsx";
+import WorkList, { useTouchedFiles } from "./ui/WorkList.jsx";
+import AgentPanel from "./ui/AgentPanel.jsx";
+import { buildTasks, latestByAgent, summarize } from "./lib/tasks.js";
 import CompareSummary from "./ui/CompareSummary.jsx";
 import ScopeBanner from "./ui/ScopeBanner.jsx";
 import Toasts from "./ui/Toasts.jsx";
@@ -414,8 +417,46 @@ export default function App() {
   );
   const alerts = useMemo(() => alertsFrom(allFeed, alertWarnings), [allFeed, alertWarnings]);
 
+  // Tasks and their stages for every agent in the range (lib/tasks.js), the agent whose task the
+  // tracker and the agent panel show, and the bottom-right list's tab.
+  const tasks = useMemo(() => buildTasks(allFeed), [allFeed]);
+  const latestTasks = useMemo(() => latestByAgent(tasks), [tasks]);
+  const [agentFocus, setAgentFocus] = useState(null);
+  const [listTab, setListTab] = useState("feed");
+  const trackedTask = useMemo(() => {
+    if (agentFocus && latestTasks.has(agentFocus)) return latestTasks.get(agentFocus);
+    let newest = null;
+    for (const task of latestTasks.values()) if (!newest || task.lastTs > newest.lastTs) newest = task;
+    return newest;
+  }, [agentFocus, latestTasks]);
+  // Blocked writes and warnings, newest first, for the list's "blocked" tab.
+  const issues = useMemo(() => {
+    const out = [];
+    for (const task of tasks) for (const b of task.blocked) out.push({ kind: "blocked", ...b });
+    for (const w of alertWarnings.values()) if (w.path) out.push({ kind: "warning", rule: w.rule, path: w.path, ts: Date.parse(w.ts) || 0 });
+    return out.sort((a, b) => b.ts - a.ts);
+  }, [tasks, alertWarnings]);
+
   // Uncommitted changes in the working tree, refreshed after every write the agents report.
   const working = useWorking(writeCount);
+  const touchedFiles = useTouchedFiles(activity.files);
+
+  // The KPI cards: uncommitted changes from git when known (they include line counts), else the
+  // files the agents wrote in the range.
+  const kpi = useMemo(() => {
+    const s = summarize(tasks, Date.now());
+    const blocked = issues.filter((i) => i.kind === "blocked").length;
+    const base = { active: s.active, written: s.written, added: null, removed: null, blocked, warned: issues.length - blocked, lastCheck: s.lastCheck };
+    if (!working) return base;
+    let added = 0;
+    let removed = 0;
+    for (const f of working.values()) {
+      added += f.added ?? 0;
+      removed += f.removed ?? 0;
+    }
+    return { ...base, written: working.size, added, removed };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasks, issues, working, eventsVersion]);
 
   // What the detail panel's diff shows: the compared branch's change to the selected file, or its
   // uncommitted change. Memoized so a re-render does not refetch a diff that is still loading.
@@ -547,6 +588,17 @@ export default function App() {
     setPicked((s) => toggleAll(s, hits));
   };
 
+  // Select an agent: its task in the tracker, its panel on the right, the camera on its last file.
+  const pickAgent = (key) => {
+    setAgentFocus(key);
+    setSelected(null);
+    const i = indexByPath.get(latestTasks.get(key)?.lastPath);
+    if (i != null && view) {
+      setFollow(false);
+      setFocus({ target: worldOf(i), path: view.buildings[i].path, nonce: Date.now() });
+    }
+  };
+
   const focusOn = (i) => {
     if (i == null || !view) return;
     setSelected(i);
@@ -624,6 +676,8 @@ export default function App() {
           roads={selectedDeps ? { path: selectedPath, deps: selectedDeps } : null}
           picked={picked}
           labelBus={labelBus}
+          selectedAgent={agentFocus}
+          onSelectAgent={pickAgent}
         />
         {/* Night only: colors pushed above 1.0 (active buildings, pulses, agents) cross the threshold. */}
         {theme.bloom && (
@@ -718,7 +772,14 @@ export default function App() {
       )}
       <Toasts toasts={toasts} describe={describeAlert} onDismiss={dismiss} onOpen={openAlert} />
       <CompareSummary compare={compare} onClose={() => compare.setHead(null)} />
-      <Legend comparing={compare.active} />
+      {!compare.active && (
+        <KpiCards
+          kpi={kpi}
+          onActive={() => setListTab("agents")}
+          onWritten={() => setReviewOpen(true)}
+          onIssues={() => setListTab("blocked")}
+        />
+      )}
       <Timeline replay={replay} feed={liveActivity.feed} />
       {reviewOpen ? (
         <ReviewPanel
@@ -728,8 +789,27 @@ export default function App() {
           onClose={() => setReviewOpen(false)}
         />
       ) : (
-        <Feed feed={activity.feed} agentSeq={agentSeq} warnings={warnings} onFocusPath={(p) => focusOn(indexByPath.get(p))} />
+        <TaskTracker
+          tasks={latestTasks}
+          task={trackedTask}
+          agentName={(task) => agentName({ agent: task.agent, source: task.source })}
+          onPickAgent={pickAgent}
+          onFocusPath={(p) => focusOn(indexByPath.get(p))}
+        />
       )}
+      <WorkList
+        tab={listTab}
+        onTab={setListTab}
+        feedProps={{ feed: activity.feed, agentSeq, warnings, onFocusPath: (p) => focusOn(indexByPath.get(p)) }}
+        tasks={latestTasks}
+        files={touchedFiles}
+        issues={issues}
+        comparing={compare.active}
+        agentName={(task) => agentName({ agent: task.agent, source: task.source })}
+        selectedAgent={agentFocus}
+        onPickAgent={pickAgent}
+        onFocusPath={(p) => focusOn(indexByPath.get(p))}
+      />
       {drag && (
         <div
           style={{
@@ -755,6 +835,14 @@ export default function App() {
           }}
           onSetScope={(paths) => scope.set(paths)}
           onFocusPath={(p) => focusOn(indexByPath.get(p))}
+        />
+      )}
+      {!selectedBuilding && picked.size === 0 && agentFocus && latestTasks.has(agentFocus) && (
+        <AgentPanel
+          task={latestTasks.get(agentFocus)}
+          name={agentName({ agent: agentFocus, source: latestTasks.get(agentFocus).source })}
+          onFocusPath={(p) => focusOn(indexByPath.get(p))}
+          onClose={() => setAgentFocus(null)}
         />
       )}
       {selectedBuilding && picked.size === 0 && (

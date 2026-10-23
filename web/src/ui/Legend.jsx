@@ -1,8 +1,9 @@
 import { theme } from "../theme.js";
 import { t } from "../lib/i18n.js";
 
-// Bottom-right key for what the colors mean. While a branch is compared, its diff colors lead.
-export default function Legend({ comparing = false }) {
+// Key for what the colors mean. While a branch is compared, its diff colors lead.
+// `embedded`: drawn inside another panel (WorkList) instead of floating bottom-right.
+export default function Legend({ comparing = false, embedded = false }) {
   const items = [
     ...(comparing
       ? [
@@ -19,22 +20,26 @@ export default function Legend({ comparing = false }) {
   ];
   return (
     <div
-      style={{
-        position: "fixed",
-        right: 12,
-        bottom: 12,
-        zIndex: 100,
-        maxWidth: 340,
-        background: theme.panelBg,
-        border: `1px solid ${theme.panelBorder}`,
-        borderRadius: 8,
-        color: theme.text,
-        fontFamily: "system-ui, sans-serif",
-        fontSize: 12,
-        padding: "10px 12px",
-        lineHeight: 1.7,
-        backdropFilter: "blur(6px)",
-      }}
+      style={
+        embedded
+          ? { fontSize: 12, padding: "2px 6px 6px", lineHeight: 1.7 }
+          : {
+              position: "fixed",
+              right: 12,
+              bottom: 12,
+              zIndex: 100,
+              maxWidth: 340,
+              background: theme.panelBg,
+              border: `1px solid ${theme.panelBorder}`,
+              borderRadius: 8,
+              color: theme.text,
+              fontFamily: "system-ui, sans-serif",
+              fontSize: 12,
+              padding: "10px 12px",
+              lineHeight: 1.7,
+              backdropFilter: "blur(6px)",
+            }
+      }
     >
       {items.map((it) => (
         <div key={it.key} style={{ display: "flex", alignItems: "center", gap: 8 }}>

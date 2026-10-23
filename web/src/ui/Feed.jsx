@@ -35,7 +35,8 @@ function agentLabel(ev, agentSeq) {
   return `${name.startsWith("source.") ? source : name} ${agentSeq[agentKeyOf(ev)] ?? "?"}`;
 }
 
-export default function Feed({ feed, agentSeq = {}, warnings = null, onFocusPath }) {
+// `embedded`: drawn inside another panel (WorkList) instead of as its own floating panel.
+export default function Feed({ feed, agentSeq = {}, warnings = null, onFocusPath, embedded = false }) {
   const [filter, setFilter] = useState("all");
   const [open, setOpen] = useState(null); // key of the expanded command row
   const [now, setNow] = useState(Date.now());
@@ -84,26 +85,32 @@ export default function Feed({ feed, agentSeq = {}, warnings = null, onFocusPath
 
   return (
     <div
-      style={{
-        position: "fixed",
-        left: 12,
-        bottom: 12,
-        zIndex: 100,
-        width: 400,
-        background: theme.panelBg,
-        border: `1px solid ${theme.panelBorder}`,
-        borderRadius: 10,
-        color: theme.text,
-        fontFamily: "system-ui, sans-serif",
-        backdropFilter: "blur(6px)",
-        display: "flex",
-        flexDirection: "column",
-      }}
+      style={
+        embedded
+          ? { display: "flex", flexDirection: "column" }
+          : {
+              position: "fixed",
+              left: 12,
+              bottom: 12,
+              zIndex: 100,
+              width: 400,
+              background: theme.panelBg,
+              border: `1px solid ${theme.panelBorder}`,
+              borderRadius: 10,
+              color: theme.text,
+              fontFamily: "system-ui, sans-serif",
+              backdropFilter: "blur(6px)",
+              display: "flex",
+              flexDirection: "column",
+            }
+      }
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "10px 12px 6px", flexWrap: "wrap" }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: theme.muted, marginRight: 4 }}>
-          {t("feed.title")} · {feed?.length ?? 0}
-        </span>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: embedded ? "2px 6px 6px" : "10px 12px 6px", flexWrap: "wrap" }}>
+        {!embedded && (
+          <span style={{ fontSize: 12, fontWeight: 700, color: theme.muted, marginRight: 4 }}>
+            {t("feed.title")} · {feed?.length ?? 0}
+          </span>
+        )}
         {Object.keys(FILTERS).map((f) => (
           <button
             key={f}
@@ -149,7 +156,7 @@ export default function Feed({ feed, agentSeq = {}, warnings = null, onFocusPath
             {t("feed.newer", { n: newer })}
           </button>
         )}
-        <div ref={scroller} onScroll={onScroll} style={{ maxHeight: "42vh", overflowY: "auto", padding: "0 6px 6px", scrollbarWidth: "thin", scrollbarColor: `${theme.panelBorder} transparent` }}>
+        <div ref={scroller} onScroll={onScroll} style={{ maxHeight: embedded ? "32vh" : "42vh", overflowY: "auto", padding: "0 6px 6px", scrollbarWidth: "thin", scrollbarColor: `${theme.panelBorder} transparent` }}>
           {!feed?.length && <div style={{ fontSize: 13, color: theme.muted, padding: "4px 6px 8px" }}>{t("feed.waiting")}</div>}
           {feed?.length > 0 && !rows.length && (
             <div style={{ fontSize: 13, color: theme.muted, padding: "4px 6px 8px" }}>{t("feed.empty")}</div>

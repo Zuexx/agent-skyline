@@ -14,7 +14,7 @@ export default function Timeline({ replay, feed }) {
   const panel = {
     position: "fixed",
     bottom: 12,
-    left: "calc(50% - 40px)",
+    left: "calc(50% + 20px)", // centered between the task tracker (left) and the work list (right)
     transform: "translateX(-50%)",
     zIndex: 100,
     background: theme.panelBg,
@@ -54,7 +54,7 @@ export default function Timeline({ replay, feed }) {
   const [a, b] = replay.range;
   const pos = b > a ? (replay.t - a) / (b - a) : 1;
   return (
-    <div style={{ ...panel, width: "min(560px, calc(100vw - 820px))", minWidth: 340, padding: "8px 10px", display: "flex", alignItems: "center", gap: 10 }}>
+    <div style={{ ...panel, width: "min(560px, calc(100vw - 900px))", minWidth: 340, padding: "8px 10px", display: "flex", alignItems: "center", gap: 10 }}>
       <button style={{ ...btn, width: 32, padding: 0, justifyContent: "center" }} onClick={replay.toggle} aria-label={replay.playing ? tr("timeline.pause") : tr("timeline.play")}>
         <Icon name={replay.playing ? "pause" : "play"} size={16} />
       </button>
