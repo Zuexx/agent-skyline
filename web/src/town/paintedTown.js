@@ -432,15 +432,22 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
   }
 
   // ---------------------------------------------------------------- sprites
+  const IS_CHARACTER = /^(hero|mage|priest)_/;
   const sheetCache = new Map();
+  const loaded = new Set(); // sheets whose textures are in
   async function sheet(name) {
     if (!sheetCache.has(name)) {
       const meta = pack.sprites[name];
-      sheetCache.set(name, Promise.all([tex(meta.albedo, { flipY: true }), tex(meta.normal, { srgb: false, flipY: true })]).then(([map, normal]) => ({ meta, map, normal })));
+      // Characters are drawn with their painted shading only (see Sprite.set): no normal map to load.
+      const normal = IS_CHARACTER.test(name) ? null : tex(meta.normal, { srgb: false, flipY: true });
+      sheetCache.set(name, Promise.all([tex(meta.albedo, { flipY: true }), normal]).then(([map, normal]) => (loaded.add(name), { meta, map, normal })));
     }
     return sheetCache.get(name);
   }
-  await Promise.all(Object.keys(pack.sprites).map(sheet));
+  // The extra idle clips (<character>_idle_<what>) are only played now and then: load them after
+  // the town is up, so they do not hold up the first picture.
+  const EXTRA_IDLE = /_idle_/;
+  await Promise.all(Object.keys(pack.sprites).filter((k) => !EXTRA_IDLE.test(k)).map(sheet));
 
   const MAP_FRAGMENT_SHARP = THREE.ShaderChunk.map_fragment.replace("texture2D( map, vMapUv )", "texture2D( map, vMapUv, -1.0 )");
   /** A hand-painted sprite standing on its feet, turned toward the camera about Y, lit by the scene. */
@@ -470,12 +477,12 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       const { meta } = s;
       // own texture objects: the frame is the texture's offset/repeat
       this.map = s.map.clone();
-      this.normal = s.normal.clone();
+      this.normal = s.normal?.clone() ?? null;
       this.mat.map = this.map;
       this.mat.normalMap = this.normal;
       // Characters keep the shading painted into them: the generated normal map has no eyes or
       // mouth, and relit faces grew a shaded snout (checked 2026-10-23). Props keep the relief.
-      const n = /^(hero|mage|priest)_/.test(name) ? 0 : 0.7;
+      const n = IS_CHARACTER.test(name) ? 0 : 0.7;
       this.mat.normalScale.set(n, n);
       this.mat.needsUpdate = true;
       this.meta = meta;
@@ -492,6 +499,7 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       const c = f % cols;
       const r = Math.floor(f / cols);
       for (const t of [this.map, this.normal]) {
+        if (!t) continue;
         t.repeat.set((this.flip ? -1 : 1) / cols, 1 / rows);
         t.offset.set((this.flip ? c + 1 : c) / cols, 1 - (r + 1) / rows);
       }
@@ -607,7 +615,8 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     // (any sprite named <character>_idle_*), each played through once before the next is picked.
     idleClip(dt) {
       const base = `${this.character}_idle`;
-      const pool = Object.keys(pack.sprites).filter((k) => k.startsWith(base + "_"));
+      // only clips already loaded (the extras arrive in the background), so a clip starts at once
+      const pool = Object.keys(pack.sprites).filter((k) => k.startsWith(base + "_") && loaded.has(k));
       if (!pool.length) return base;
       this.idleLeft = (this.idleLeft ?? 0) - dt;
       if (this.idleLeft <= 0 || !this.idleName) {
@@ -857,8 +866,10 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     selectedId = id ?? null;
     for (const [k, s] of signs) styleSign(k, s);
   }
-  // painted buildings: the sign stands at the front point (b.world)
-  for (const b of V.buildings) signs.set(b.id, makeSign(b.id, v3(b.world)));
+  // The sign hangs on the building's front above head height: standing at the door it covered the
+  // characters working there (checked 2026-10-24).
+  const SIGN_UP = new THREE.Vector3(0, CHAR_H * (big ? BIG : 1) * 1.05, 0);
+  for (const b of V.buildings) signs.set(b.id, makeSign(b.id, v3(b.world).add(SIGN_UP)));
 
   /** The name tag over an agent's head and the speech bubble with its prompt. */
   function makeAgentTag(color) {
@@ -934,7 +945,7 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       sprite.mesh.position.copy(pos);
       // the art has no cast shadow: a soft contact shadow on the ground under it
       const shadow = groundPlane(SITE_W * 1.25, SITE_W * 1.25 * 2.2, glowMat(new THREE.Color(0, 0, 0), 1, false, 0.45), pos);
-      const sign = makeSign(id, pos, true);
+      const sign = makeSign(id, pos.clone().add(SIGN_UP), true);
       signs.set(id, sign);
       sites.set(id, { sprite, shadow, sign, pos, pixel, lot: list.find((s) => s.id === id).lot, top: pos.clone().add(new THREE.Vector3(0, sprite.h * 0.8, 0)) });
       buildings.set(id, { id, pixel, pos, site: true });
@@ -1267,6 +1278,10 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     raf = requestAnimationFrame(frame);
   }
   let raf = requestAnimationFrame(frame);
+  // now the extra idle clips, one at a time so the first seconds stay smooth
+  (async () => {
+    for (const k of Object.keys(pack.sprites).filter((k) => EXTRA_IDLE.test(k))) await sheet(k).catch(() => {});
+  })();
 
   return {
     setState,

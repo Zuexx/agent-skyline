@@ -50,6 +50,8 @@ export default function PaintedTownView({ pack, variant, activity, agentSeq, pat
       .then((t) => {
         if (cancelled) return t.dispose();
         made = renderer.current = t;
+        // ?debug: the renderer on window.__town, for checks over the debug port (setState, pick, ...)
+        if (new URLSearchParams(location.search).has("debug")) window.__town = t;
         // whatever arrived while the pack was loading
         t.setSites(sitesRef.current);
         t.setState(stateRef.current);
