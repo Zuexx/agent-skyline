@@ -894,7 +894,7 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
   const COLORS = { hero: "#ff9a3c", mage: "#b56cff", priest: "#3fe0c8" };
   // Which clip plays for an action: the pack's sprite named <character>_<verb> when it has one
   // (art batches plug in by name), else the idle clips.
-  const VERB = { write: "hammer", read: "read", blocked: "bump", walk: "walk" };
+  const VERB = { write: "hammer", read: "read", blocked: "bump", cast: "cast", search: "search", walk: "walk" };
   const clipFor = (character, action) => {
     const name = VERB[action] && `${character}_${VERB[action]}`;
     return name && pack.sprites[name] ? name : undefined;
