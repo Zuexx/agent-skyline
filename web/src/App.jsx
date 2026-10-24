@@ -699,6 +699,8 @@ export default function App() {
             reviewed={reviewedLive}
             mapMode={viewId}
             diff={compare.active ? compare.diff : null}
+            churn={churn}
+            deps={depIndex}
             locked={zones.locked}
             scopeAllow={scope.allow}
             folder={townFolder?.id ?? null}

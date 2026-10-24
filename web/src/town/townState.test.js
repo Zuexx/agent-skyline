@@ -138,10 +138,44 @@ describe("houseStates", () => {
       ...Array.from({ length: 10 }, (_, i) => [`web/src/lib/f${i}.js`, {}]),
     ]);
     const h = houseStates(IDS, { working });
-    expect(h.specs).toEqual({ changes: 3, level: 2, locked: false, scope: false, warn: 0 });
+    expect(h.specs).toEqual({ changes: 3, level: 2, added: 0, deleted: 0, big: false, locked: false, scope: false, warn: 0, hot: 0, pillar: 0 });
     expect(h.install.level).toBe(1);
     expect(h["web/src/lib"].level).toBe(3);
+    expect(h["web/src/lib"].big).toBe(true);
     expect(h.web).toBeUndefined();
+  });
+  it("puts new and moved files on the tent, deleted ones on the rubble, the rest on the scaffold", () => {
+    const working = new Map([
+      ["specs/a.md", { status: "A" }],
+      ["specs/b.md", { status: "R" }],
+      ["specs/c.md", { status: "D" }],
+      ["specs/d.md", { status: "M" }],
+      ...Array.from({ length: 10 }, (_, i) => [`install/n${i}.sh`, { status: "A" }]),
+    ]);
+    const h = houseStates(IDS, { working });
+    expect(h.specs).toMatchObject({ changes: 4, added: 2, deleted: 1, level: 1, big: false });
+    // ten new files: a big change (the crane) with no scaffold
+    expect(h.install).toMatchObject({ added: 10, level: 0, big: true });
+  });
+  it("marks the most changed buildings as hotspots, summed over their files", () => {
+    const churn = { "specs/a.md": 6, "specs/b.md": 6, "install/x.sh": 30, "web/a.js": 3, "web/src/lib/a.js": 11, "web/src/city/a.js": 10 };
+    const h = houseStates(IDS, { churn });
+    expect(h.install.hot).toBe(30);
+    expect(h.specs.hot).toBe(12);
+    expect(h["web/src/lib"].hot).toBe(11);
+    expect(h["web/src/city"]).toBeUndefined(); // fourth: only the top three
+    expect(h.web).toBeUndefined(); // below the minimum
+  });
+  it("raises the flagpole on buildings many files of other buildings use", () => {
+    const usedBy = new Map([
+      ["web/src/lib/a.js", ["web/src/city/1.js", "web/src/city/2.js", "web/x.js", "specs/s.md", "install/i.sh", "web/src/lib/b.js"]],
+      ["web/src/lib/b.js", ["web/src/city/1.js"]],
+      ["specs/a.md", ["web/x.js", "web/y.js"]],
+    ]);
+    const h = houseStates(IDS, { deps: { usedBy } });
+    // web/src/lib/b.js is in the same building and does not count; city/1.js counts once
+    expect(h["web/src/lib"].pillar).toBe(5);
+    expect(h.specs).toBeUndefined(); // two users: below the minimum
   });
   it("marks folders a locked zone or the task scope covers", () => {
     const h = houseStates(IDS, { locked: ["install/**", "web/src/**"], allow: ["specs/**"] });

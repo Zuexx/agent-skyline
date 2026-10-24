@@ -1170,6 +1170,130 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     }
   }
 
+  // ---------------------------------------------------------------- props (spec 09 §4)
+  // The marks that stand beside a house: foundation and tent (new files), rubble (deleted files),
+  // market stall (hotspot), flagpole (used by many), crane (a big change). Each is the pack's
+  // sprite of that name when it has one; until the art comes, a few pixels drawn here stand in.
+  // Height in characters, and where it stands: across the house's front (-1 its left edge, 1 its
+  // right) and metres toward the camera.
+  const PROPS = {
+    tent: { h: 0.45, across: 0.85, toward: 0 },
+    rubble: { h: 0.25, across: -0.8, toward: 0.6 },
+    stall: { h: 0.5, across: -0.45, toward: 1.6 },
+    flagpole: { h: 1, across: 0.5, toward: -0.6 },
+    crane: { h: 1.7, across: -0.75, toward: -1.8 },
+  };
+  /** A stand-in picture for prop `name`: [canvas, width / height]. Pixel art on a small grid. */
+  function standIn(name) {
+    const [w, h] = { tent: [32, 26], rubble: [32, 14], stall: [32, 30], flagpole: [16, 48], crane: [36, 64] }[name];
+    const c = document.createElement("canvas");
+    c.width = w;
+    c.height = h;
+    const g = c.getContext("2d");
+    const r = (x, y, rw, rh, col) => ((g.fillStyle = col), g.fillRect(x, y, rw, rh));
+    if (name === "tent") {
+      // the tent, and in front of it the foundation: a frame of beams on the ground
+      for (let y = 4; y < 20; y++) {
+        const half = Math.round((y - 4) * 0.8);
+        r(20 - half, y, half * 2, 1, y % 5 === 0 ? "#d9c7a0" : "#efe2c2");
+        r(20 - half, y, 1, 1, "#8a7350");
+        r(20 + half - 1, y, 1, 1, "#8a7350");
+      }
+      r(18, 12, 4, 8, "#5a4630");
+      r(19, 1, 2, 4, "#6b4a2a");
+      r(20, 1, 5, 2, "#e8483a");
+      r(1, 19, 30, 3, "#9a6a3a");
+      r(1, 22, 30, 3, "#7a5030");
+      r(1, 19, 3, 6, "#5b3b20");
+      r(28, 19, 3, 6, "#5b3b20");
+      r(14, 19, 3, 6, "#5b3b20");
+    } else if (name === "rubble") {
+      const stones = [[2, 8, 7, 6, "#8b8780"], [7, 4, 8, 10, "#a39f97"], [14, 6, 6, 8, "#77736d"], [19, 2, 7, 12, "#9a958c"], [25, 7, 6, 7, "#85817a"], [11, 9, 5, 5, "#b8b3a8"]];
+      for (const [x, y, sw, sh, col] of stones) {
+        r(x, y, sw, sh, col);
+        r(x, y, sw, 1, "#cfcac0");
+        r(x, y + sh - 1, sw, 1, "#55524d");
+      }
+      r(4, 3, 12, 2, "#7a5030"); // a broken plank
+      r(15, 1, 2, 3, "#7a5030");
+    } else if (name === "stall") {
+      for (let x = 0; x < 32; x++) r(x, 2, 1, 7, Math.floor(x / 4) % 2 ? "#f4efe2" : "#d8433a");
+      for (let x = 0; x < 32; x += 4) r(x + 1, 9, 2, 2, Math.floor(x / 4) % 2 ? "#f4efe2" : "#d8433a");
+      r(0, 0, 32, 2, "#5b3b20");
+      r(2, 9, 2, 21, "#5b3b20");
+      r(28, 9, 2, 21, "#5b3b20");
+      r(1, 19, 30, 3, "#a87442");
+      r(1, 22, 30, 8, "#7a5030");
+      r(5, 15, 5, 4, "#e9b03a"); // goods on the counter
+      r(12, 14, 6, 5, "#5fa04a");
+      r(20, 15, 6, 4, "#c8603a");
+    } else if (name === "flagpole") {
+      r(7, 0, 3, 3, "#f2c94c");
+      r(8, 3, 1, 41, "#cfcac0");
+      r(7, 3, 1, 41, "#8b8780");
+      for (let y = 5; y < 17; y++) r(9, y, 7 - Math.round(Math.abs(y - 11) * 0.25), 1, y < 8 || y > 13 ? "#2f6fd6" : "#f2c94c");
+      r(3, 44, 10, 4, "#77736d");
+      r(3, 44, 10, 1, "#a39f97");
+    } else if (name === "crane") {
+      // a lattice tower, the jib to the right, a hook on a rope
+      r(6, 8, 2, 56, "#d9a21c");
+      r(12, 8, 2, 56, "#d9a21c");
+      for (let y = 10; y < 64; y += 6) {
+        r(6, y, 8, 1, "#b8820f");
+        for (let k = 0; k < 6; k++) r(7 + k, y + k, 1, 1, "#b8820f");
+      }
+      r(0, 6, 36, 3, "#e8b42a");
+      r(0, 9, 6, 4, "#55524d"); // the counterweight
+      r(9, 0, 2, 6, "#d9a21c");
+      r(10, 1, 22, 1, "#55524d");
+      r(30, 9, 1, 22, "#3a3733");
+      r(28, 31, 5, 2, "#3a3733");
+      r(28, 33, 2, 3, "#3a3733");
+      r(8, 13, 4, 4, "#7fb5d8"); // the cab window
+    }
+    return [c, w / h];
+  }
+  const standInTex = new Map();
+  /** Prop `name` standing at world point `feet`: { tick, remove }. */
+  function makeProp(name, feet) {
+    const size = PROPS[name].h * HEAD;
+    if (pack.sprites[name]) {
+      const s = new Sprite(size);
+      s.set(name);
+      s.mesh.position.copy(feet);
+      return { tick: (dt) => s.update(dt), remove: () => s.remove() };
+    }
+    if (!standInTex.has(name)) {
+      const [canvas, aspect] = standIn(name);
+      const t = new THREE.CanvasTexture(canvas);
+      t.colorSpace = THREE.SRGBColorSpace;
+      t.magFilter = t.minFilter = THREE.NearestFilter;
+      standInTex.set(name, { t, aspect });
+    }
+    const { t, aspect } = standInTex.get(name);
+    // unlit like the painting; darker at night so it does not glow against the dark town
+    const mat = new THREE.MeshBasicMaterial({ map: t, transparent: true, alphaTest: 0.5, side: THREE.DoubleSide, color: new THREE.Color(night ? 0.42 : 0.95, night ? 0.42 : 0.95, night ? 0.5 : 0.95) });
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(size * aspect, size).translate(0, size / 2, 0), mat);
+    m.position.copy(feet);
+    m.renderOrder = 2;
+    m.rotation.y = Math.atan2(camera.position.x - feet.x, camera.position.z - feet.z);
+    scene.add(m);
+    return { tick() {}, remove: () => (scene.remove(m), m.geometry.dispose(), mat.dispose()) };
+  }
+  /** Where prop `name` stands at building `b`: beside its front, as PROPS says. */
+  function propSpot(name, b) {
+    const f = frontOf(b);
+    const { across, toward } = PROPS[name];
+    const half = ((b.box ? b.box[2] - b.box[0] : 120) * 0.5 * f.length()) / V.focalPx;
+    toCam.copy(camera.position).sub(f).setY(0).normalize();
+    camRight.set(1, 0, 0).applyQuaternion(camera.quaternion).setY(0).normalize();
+    const p = f.addScaledVector(camRight, across * half).addScaledVector(toCam, toward);
+    // onto the painted ground there, when the relief has it near that distance
+    const [px, py] = pixelOf(p);
+    const g = groundAt(px, py);
+    return g && Math.abs(g.length() - p.length()) < 3 ? g : p;
+  }
+
   // building effects: barrier (blocked), scaffold (being written), spill light (window level >= 2)
   class BuildingFx {
     constructor() {
@@ -1177,6 +1301,7 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       this.scaffolds = new Map();
       this.spills = new Map();
       this.scopes = new Map();
+      this.props = new Map(); // "<building>:<prop>" -> { tick, remove }
       this.failing = new Map(); // tests failed: black smoke and a small fire until the next run
       this.passShown = new Map(); // building -> the passed run already celebrated
       this.clashShown = new Set();
@@ -1232,6 +1357,16 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     }
     tick(dt) {
       for (const f of this.failing.values()) f.tick(dt);
+      for (const p of this.props.values()) p.tick(dt);
+    }
+    /** The props that stand: a Set of "<building>:<prop>". */
+    updateProps(want) {
+      for (const [k, o] of this.props) if (!want.has(k)) (o.remove(), this.props.delete(k));
+      for (const k of want) {
+        const i = k.lastIndexOf(":");
+        const [id, name] = [k.slice(0, i), k.slice(i + 1)];
+        if (!this.props.has(k) && buildings.has(id)) this.props.set(k, makeProp(name, propSpot(name, buildings.get(id))));
+      }
     }
     sync(map, want, make) {
       for (const [id, o] of map) if (!want.has(id)) (o.remove(), map.delete(id));
@@ -1474,6 +1609,7 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     s.board.style.outlineOffset = "1px";
     s.el.style.zIndex = on ? "2" : "1";
   }
+  const MAX_CRANES = 3;
   const CHIP_COLORS = {
     blocked: "#ff6b6b",
     failed: "#ff8a4c",
@@ -1482,6 +1618,8 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     scope: "#86f5a4",
     added: "#7dff9a",
     deleted: "#ff6b6b",
+    hot: "#ffb36b",
+    pillar: "#8fc1ff",
     "role-code": "#ff9f43",
     "role-test": "#3fd8c2",
     "role-doc": "#b39bff",
@@ -1734,6 +1872,8 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     const blocked = new Set();
     const scaffold = new Map();
     const scoped = new Set();
+    const props = new Set();
+    const cranes = [];
     const shownTests = {};
     for (const id of buildings.keys()) {
       const h = houses[id];
@@ -1742,8 +1882,18 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       if (tests[id]?.outcome === "failed") kinds.push("failed");
       if (scaffoldAll.has(id)) kinds.push("scaffold");
       if (h?.warn) kinds.push("warn");
+      if (h?.added) kinds.push("added");
+      if (h?.deleted) kinds.push("deleted");
       if (h?.scope) kinds.push("scope");
+      if (h?.hot) kinds.push("hot");
+      if (h?.pillar) kinds.push("pillar");
       const { show, folded } = prioritize(kinds);
+      if (show.includes("added")) props.add(`${id}:tent`);
+      if (show.includes("deleted")) props.add(`${id}:rubble`);
+      if (show.includes("hot")) props.add(`${id}:stall`);
+      if (show.includes("pillar")) props.add(`${id}:flagpole`);
+      // the crane comes with the construction it belongs to
+      if (h?.big && (show.includes("scaffold") || show.includes("added"))) cranes.push([id, h.changes]);
       if (h?.locked || show.includes("blocked")) blocked.add(id);
       if (show.includes("scaffold")) scaffold.set(id, scaffoldAll.get(id));
       if (show.includes("scope")) scoped.add(id);
@@ -1753,15 +1903,23 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       // mode marks first: the role (stand-in for the guild flag), the branch's new and deleted files
       const m = modeInfo[id];
       if (mode === "role" && m?.role) chips.push({ kind: `role-${m.role}`, text: L.role?.[m.role] ?? m.role });
-      if (mode === "diff" && m?.added) chips.push({ kind: "added", text: L.added?.(m.added) ?? `+${m.added}` });
-      if (mode === "diff" && m?.deleted) chips.push({ kind: "deleted", text: L.deleted?.(m.deleted) ?? `-${m.deleted}` });
+      // how many files are new and deleted, beside the tent and the rubble (or in their place)
+      if (h?.added) chips.push({ kind: "added", text: L.added?.(h.added) ?? `+${h.added}` });
+      if (h?.deleted) chips.push({ kind: "deleted", text: L.deleted?.(h.deleted) ?? `-${h.deleted}` });
       // the yellow flag's stand-in until its art arrives: "？" and how many files are unreviewed
       if (show.includes("warn")) chips.push({ kind: "warn", text: `？${h.warn}`, big: true, title: L.warnHint?.(h.warn) });
-      for (const k of folded) chips.push({ kind: k, text: k === "warn" ? `${L.warn ?? "?"} ${h.warn}` : (L[k] ?? k), title: k === "warn" ? L.warnHint?.(h.warn) : undefined });
+      for (const k of folded) {
+        if (k === "added" || k === "deleted") continue; // counted above
+        if (k === "hot" || k === "pillar") chips.push({ kind: k, text: L[k]?.(h[k]) ?? k, title: L[`${k}Hint`]?.(h[k]) });
+        else chips.push({ kind: k, text: k === "warn" ? `${L.warn ?? "?"} ${h.warn}` : (L[k] ?? k), title: k === "warn" ? L.warnHint?.(h.warn) : undefined });
+      }
       setChips(id, chips);
     }
     const lit = new Set(windowsOn ? V.buildings.filter((b, i) => winLevels[i] >= SPILL_MIN).map((b) => b.id) : []);
     fx.update(blocked, scaffold, lit, scoped);
+    // at most MAX_CRANES at once (spec 09: big effects are few), the biggest changes first
+    for (const [id] of cranes.sort((x, y) => y[1] - x[1]).slice(0, MAX_CRANES)) props.add(`${id}:crane`);
+    fx.updateProps(props);
     fx.updateTests(shownTests);
     fx.updateConflicts(live.conflicts);
     reliefMat.uniforms.readEnergy.value = live.agents.some((a) => a.action === "read") ? (night ? 2.2 : 1.4) : 0;

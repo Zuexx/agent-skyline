@@ -17,9 +17,10 @@ import { t } from "../lib/i18n.js";
  * the houses (scaffolds, barriers, scope rings); `warnings` (lib/scope.js) and `reviewed` (Set of
  * paths ticked off in the review) raise and lower the out-of-scope marks. `mapMode` is the
  * toolbar's view (folder / role / touched / diff, spec 09 §5); `diff` the compared branch's
- * changes (Map path -> { status }) for the diff view.
+ * changes (Map path -> { status }) for the diff view. `churn` (path -> commits, /api/churn) and `deps`
+ * (lib/deps.js index) raise the market stalls and the flagpoles of the standing marks.
  */
-export default function PaintedTownView({ pack, variant, activity, agentSeq, paths = [], view = "pano", names = {}, prompts = {}, rootName = "", folder = null, onPickFolder, working = null, locked = [], scopeAllow = [], warnings = null, reviewed = null, mapMode = "folder", diff = null }) {
+export default function PaintedTownView({ pack, variant, activity, agentSeq, paths = [], view = "pano", names = {}, prompts = {}, rootName = "", folder = null, onPickFolder, working = null, locked = [], scopeAllow = [], warnings = null, reviewed = null, mapMode = "folder", diff = null, churn = null, deps = null }) {
   const box = useRef(null);
   const renderer = useRef(null);
   const [error, setError] = useState(null);
@@ -30,25 +31,29 @@ export default function PaintedTownView({ pack, variant, activity, agentSeq, pat
   const sites = useMemo(() => town.filter((b) => !b.painted && b.lot).map((b) => ({ id: b.id, lot: b.lot })), [town]);
   const state = useMemo(() => {
     const s = townState(activity, agentSeq, buildingIds, now, prompts, warnings);
-    let houses = houseStates(buildingIds, { working, locked, allow: scopeAllow, warnings, reviewed });
+    let houses = houseStates(buildingIds, { working, locked, allow: scopeAllow, warnings, reviewed, churn, deps });
     const mode = mapMode === "diff" && !diff ? "folder" : mapMode;
     const modes = buildingModes(buildingIds, paths, { files: activity?.files, diff });
-    const labels = Object.fromEntries(["blocked", "failed", "scaffold", "warn", "scope"].map((k) => [k, t(`town.chip.${k}`)]));
+    const labels = Object.fromEntries(["blocked", "failed", "scaffold", "warn", "scope", "crane"].map((k) => [k, t(`town.chip.${k}`)]));
     labels.warnHint = (n) => t("town.chip.warnHint", { n });
     labels.role = Object.fromEntries(["code", "test", "doc", "config", "asset"].map((r) => [r, t(`group.${r}`)]));
     labels.added = (n) => t("town.chip.added", { n });
     labels.deleted = (n) => t("town.chip.deleted", { n });
+    labels.hot = (n) => t("town.chip.hot", { n });
+    labels.pillar = (n) => t("town.chip.pillar", { n });
+    labels.hotHint = (n) => t("town.chip.hotHint", { n, days: 90 });
+    labels.pillarHint = (n) => t("town.chip.pillarHint", { n });
     if (mode === "diff") {
       // the branch's construction drawing: no agents or live events; scaffolds where it modified
-      // files, the locked barriers stay (spec 09 §5)
+      // files, tents where it added, rubble where it deleted; the locked barriers stay (spec 09 §5)
       houses = Object.fromEntries(
         Object.entries(modes)
           .map(([id, m]) => {
-            const n = m.modified + m.added;
-            const level = n === 0 ? 0 : n < 3 ? 1 : n < BIG_CHANGE ? 2 : 3;
-            return [id, { changes: n, level, locked: !!houses[id]?.locked, scope: false, warn: 0 }];
+            const n = m.modified + m.added + m.deleted;
+            const level = m.modified === 0 ? 0 : m.modified < 3 ? 1 : m.modified < BIG_CHANGE ? 2 : 3;
+            return [id, { changes: n, level, added: m.added, deleted: m.deleted, big: n >= BIG_CHANGE, locked: !!houses[id]?.locked, scope: false, warn: 0, hot: 0, pillar: 0 }];
           })
-          .filter(([, h]) => h.level || h.locked),
+          .filter(([, h]) => h.changes || h.locked),
       );
       return { agents: [], recent: [], tests: {}, conflicts: [], houses, labels, mode, modes };
     }
@@ -58,7 +63,7 @@ export default function PaintedTownView({ pack, variant, activity, agentSeq, pat
       name: names[a.key] ?? null,
       prompt: a.parent ? null : (prompts[a.key] ?? null),
     })) };
-  }, [activity, agentSeq, buildingIds, now, names, prompts, working, locked, scopeAllow, warnings, reviewed, mapMode, diff, paths]);
+  }, [activity, agentSeq, buildingIds, now, names, prompts, working, locked, scopeAllow, warnings, reviewed, mapMode, diff, paths, churn, deps]);
   const stateRef = useRef(state);
   stateRef.current = state;
   const folderRef = useRef(folder);

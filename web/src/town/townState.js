@@ -180,28 +180,50 @@ export function townState(activity, agentSeq, buildingIds, nowMs, prompts = {}, 
 
 // Uncommitted changes in a building: this many files or more is a big change (spec 09 §4).
 export const BIG_CHANGE = 10;
+// The standing marks (spec 09 §4): the HOT_TOP buildings whose files were changed most in the
+// churn window (at least HOT_MIN changes summed over their files) get the market stall; the
+// PILLAR_TOP buildings used by the most files of other buildings (at least PILLAR_MIN) the flagpole.
+// Ranked, not a fixed bar, so a small repo and a big one both show a few.
+export const HOT_TOP = 3;
+export const HOT_MIN = 10;
+export const PILLAR_TOP = 3;
+export const PILLAR_MIN = 5;
+
+/** The `top` ids of `score` (Map id -> n) with n >= min, highest first. */
+function topOf(score, top, min) {
+  return new Set([...score].filter(([, n]) => n >= min).sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0])).slice(0, top).map(([id]) => id));
+}
 
 /**
  * What stands on each building without an agent there (spec 09 §4): { [building]: { changes,
- * level, locked, scope } }, only for buildings with something to show. changes: files with
- * uncommitted changes (`working`, the Map path -> change from /api/working); level 0-3 for the
- * scaffold (none / 1-2 files / 3-9 / BIG_CHANGE or more); locked: the whole folder is in a locked
- * zone (`locked` globs); scope: the folder is inside the declared task scope (`allow` globs);
- * warn: files written there that looked out of place (`warnings`, lib/scope.js) and are not yet
- * ticked off in the review (`reviewed`, a Set of paths).
+ * level, added, deleted, big, locked, scope, warn, hot, pillar } }, only for buildings with
+ * something to show. changes: files with uncommitted changes (`working`, the Map path -> change
+ * from /api/working); added: of those, new files (status A, or R: a moved file lands as new) -> the
+ * foundation and tent; deleted: status D -> the rubble; level 0-3 for the scaffold, from the
+ * modified rest (none / 1-2 files / 3-9 / BIG_CHANGE or more); big: BIG_CHANGE or more changes of
+ * any kind -> the crane; locked: the whole folder is in a locked zone (`locked` globs); scope: the
+ * folder is inside the declared task scope (`allow` globs); warn: files written there that looked
+ * out of place (`warnings`, lib/scope.js) and are not yet ticked off in the review (`reviewed`, a
+ * Set of paths); hot: changes in the churn window (`churn`, path -> commits, /api/churn) when it
+ * ranks among the hotspots, else 0; pillar: files of other buildings that use its files (`deps`,
+ * lib/deps.js index) when it ranks among the most used, else 0.
  */
-export function houseStates(buildingIds, { working = null, locked = [], allow = [], warnings = null, reviewed = null } = {}) {
+export function houseStates(buildingIds, { working = null, locked = [], allow = [], warnings = null, reviewed = null, churn = null, deps = null } = {}) {
   const out = {};
-  const at = (id) => (out[id] ??= { changes: 0, level: 0, locked: false, scope: false, warn: 0 });
+  const at = (id) => (out[id] ??= { changes: 0, level: 0, added: 0, deleted: 0, big: false, locked: false, scope: false, warn: 0, hot: 0, pillar: 0 });
   const warned = new Set();
   for (const w of warnings?.values?.() ?? []) if (w.rule !== "conflict" && !reviewed?.has(w.path)) warned.add(w.path);
   for (const p of warned) {
     const b = buildingOf(p, buildingIds);
     if (b) at(b).warn++;
   }
-  for (const p of working?.keys?.() ?? []) {
+  for (const [p, c] of working?.entries?.() ?? []) {
     const b = buildingOf(p, buildingIds);
-    if (b) at(b).changes++;
+    if (!b) continue;
+    const h = at(b);
+    h.changes++;
+    if (c?.status === "A" || c?.status === "R") h.added++;
+    else if (c?.status === "D") h.deleted++;
   }
   // a folder counts as covered when a file directly in it would match
   const covered = (id, globs) => globs.some((g) => matchGlob(g, id === "(root)" ? "_" : `${id}/_`));
@@ -209,14 +231,37 @@ export function houseStates(buildingIds, { working = null, locked = [], allow = 
     if (locked.length && covered(id, locked)) at(id).locked = true;
     if (allow.length && covered(id, allow)) at(id).scope = true;
   }
-  for (const h of Object.values(out)) h.level = h.changes === 0 ? 0 : h.changes < 3 ? 1 : h.changes < BIG_CHANGE ? 2 : 3;
+  const heat = new Map();
+  for (const [p, n] of Object.entries(churn ?? {})) {
+    const b = buildingOf(p, buildingIds);
+    if (b) heat.set(b, (heat.get(b) ?? 0) + n);
+  }
+  for (const id of topOf(heat, HOT_TOP, HOT_MIN)) at(id).hot = heat.get(id);
+  const users = new Map(); // building -> Set of files elsewhere that use its files
+  for (const [to, froms] of deps?.usedBy ?? []) {
+    const b = buildingOf(to, buildingIds);
+    if (!b) continue;
+    for (const from of froms) {
+      if (buildingOf(from, buildingIds) === b) continue;
+      if (!users.has(b)) users.set(b, new Set());
+      users.get(b).add(from);
+    }
+  }
+  const used = new Map([...users].map(([b, s]) => [b, s.size]));
+  for (const id of topOf(used, PILLAR_TOP, PILLAR_MIN)) at(id).pillar = used.get(id);
+  for (const h of Object.values(out)) {
+    const m = h.changes - h.added - h.deleted;
+    h.level = m === 0 ? 0 : m < 3 ? 1 : m < BIG_CHANGE ? 2 : 3;
+    h.big = h.changes >= BIG_CHANGE;
+  }
   return out;
 }
 
 // Spec 09 §4: what shows when one building has several states. Higher comes first; at most
 // MAX_SHOWN show as effects, the rest fold into chips on the sign. The locked barrier is not in
-// this list: it always shows.
-export const EFFECT_ORDER = ["blocked", "failed", "scaffold", "warn", "scope"];
+// this list: it always shows. New files and rubble are uncommitted work like the scaffold; the
+// market stall and the flagpole stand for lasting traits and come last.
+export const EFFECT_ORDER = ["blocked", "failed", "scaffold", "warn", "added", "deleted", "scope", "hot", "pillar"];
 export const MAX_SHOWN = 2;
 
 /** { show: kinds drawn as effects, folded: kinds shown as chips } for one building's `kinds`. */
