@@ -572,6 +572,276 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     }
   }
 
+  // ---------------------------------------------------------------- event effects (spec 09 §3.2, §4)
+  /** Glowing points: emit() one at a time, each fades out over its own life. Additive. */
+  class Particles {
+    constructor(cap, size, { gravity = 0, drag = 0 } = {}) {
+      Object.assign(this, { cap, gravity, drag, next: 0 });
+      this.p = new Float32Array(cap * 3);
+      this.v = new Float32Array(cap * 3);
+      this.base = new Float32Array(cap * 3);
+      this.col = new Float32Array(cap * 3);
+      this.age = new Float32Array(cap).fill(1);
+      this.life = new Float32Array(cap).fill(1);
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.BufferAttribute(this.p, 3));
+      g.setAttribute("color", new THREE.BufferAttribute(this.col, 3));
+      // soft round glows, `size` metres across (a square PointsMaterial dot was a few pixels in the panorama)
+      this.points = new THREE.Points(
+        g,
+        new THREE.ShaderMaterial({
+          uniforms: { size: { value: size }, scale: pointScale },
+          vertexShader: `attribute vec3 color; uniform float size, scale; varying vec3 vCol;
+            void main() { vCol = color; vec4 mv = modelViewMatrix * vec4(position, 1.0);
+              gl_PointSize = max(2.0, size * scale / -mv.z); gl_Position = projectionMatrix * mv; }`,
+          fragmentShader: `varying vec3 vCol;
+            void main() { float d = length(gl_PointCoord - 0.5) * 2.0; float a = smoothstep(1.0, 0.0, d);
+              gl_FragColor = vec4(vCol * (a * a + 0.6 * smoothstep(0.35, 0.0, d)), 1.0); }`,
+          transparent: true,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+        }),
+      );
+      this.points.frustumCulled = false;
+      this.points.renderOrder = 3;
+      scene.add(this.points);
+    }
+    emit(at, vx, vy, vz, color, life) {
+      const i = this.next++ % this.cap;
+      this.p.set([at.x, at.y, at.z], i * 3);
+      this.v.set([vx, vy, vz], i * 3);
+      this.base.set([color.r, color.g, color.b], i * 3);
+      this.age[i] = 0;
+      this.life[i] = life;
+    }
+    update(dt) {
+      const { p, v, base, col, age, life } = this;
+      const keep = Math.max(0, 1 - this.drag * dt);
+      for (let i = 0; i < this.cap; i++) {
+        if (age[i] >= life[i]) {
+          col[i * 3] = col[i * 3 + 1] = col[i * 3 + 2] = 0;
+          continue;
+        }
+        age[i] += dt;
+        v[i * 3 + 1] -= this.gravity * dt;
+        for (let k = 0; k < 3; k++) (v[i * 3 + k] *= keep), (p[i * 3 + k] += v[i * 3 + k] * dt);
+        const f = Math.max(0, 1 - age[i] / life[i]);
+        for (let k = 0; k < 3; k++) col[i * 3 + k] = base[i * 3 + k] * f * f;
+      }
+      this.points.geometry.attributes.position.needsUpdate = true;
+      this.points.geometry.attributes.color.needsUpdate = true;
+    }
+    remove() {
+      scene.remove(this.points);
+      this.points.geometry.dispose();
+      this.points.material.dispose();
+    }
+  }
+  // pixels per metre at one metre from the camera, for point sizes (kept current in the loop)
+  const pointScale = { value: 1 };
+  const effects = new Set(); // one-shot effects: { update(dt) -> still running?, remove() }
+  // Effect lights come from a fixed pool made up front: adding a light to the scene makes three.js
+  // rebuild the shader of every lit material, which stalled the frame for seconds (checked 2026-10-24).
+  const fxLights = Array.from({ length: 16 }, () => Object.assign(omni(new THREE.Color(0, 0, 0), 0, 1, new THREE.Vector3(), 1), { free: true }));
+  const spareLight = new THREE.PointLight(); // handed out when the pool is used up: lights nothing
+  /** A pooled light at `pos`, intensity 0 until the caller sets it; release() gives it back. */
+  function fxLight(color, range, pos) {
+    const l = fxLights.find((x) => x.free) ?? spareLight;
+    l.free = false;
+    l.color.copy(color);
+    l.distance = range;
+    l.position.copy(pos);
+    l.intensity = 0;
+    l.release = () => ((l.intensity = 0), (l.free = true));
+    return l;
+  }
+  const HEAD = CHAR_H * (big ? BIG : 1); // a character's height in this view
+  const rand = (a, b) => a + Math.random() * (b - a);
+  function sphereDir() {
+    const u = rand(-1, 1);
+    const a = rand(0, Math.PI * 2);
+    const s = Math.sqrt(1 - u * u);
+    return [s * Math.cos(a), u, s * Math.sin(a)];
+  }
+
+  /** Task done (Stop after a turn with writes): three small fireworks over the agent. */
+  function fireworks(at, color) {
+    const ps = new Particles(420, HEAD * 0.13, { gravity: HEAD * 0.45, drag: 1.1 });
+    const colors = [new THREE.Color("#5dff8a"), new THREE.Color("#ffd75e"), color.clone()].map((c) => c.multiplyScalar(night ? 5 : 3.5));
+    const shells = [0.35, 0.8, 1.25].map((t, i) => ({ t, color: colors[i], fired: false }));
+    const light = fxLight(new THREE.Color("#ffe6a0"), HEAD * 3, at);
+    let t = 0;
+    return {
+      update(dt) {
+        t += dt;
+        for (const s of shells) {
+          if (s.fired || t < s.t) continue;
+          s.fired = true;
+          const c = at.clone().add(new THREE.Vector3(rand(-0.35, 0.35) * HEAD, HEAD * rand(1.6, 2.0), 0));
+          for (let k = 0; k < 110; k++) {
+            const [x, y, z] = sphereDir();
+            const sp = HEAD * rand(1.3, 1.6);
+            ps.emit(c, x * sp, y * sp, z * sp, s.color, rand(1.0, 1.5));
+          }
+          light.position.copy(c);
+          light.color.copy(s.color).multiplyScalar(1 / 4);
+          light.intensity = (night ? 4 : 1.5) * Math.PI;
+        }
+        // the rising trail of the next shell
+        for (const s of shells) {
+          const k = (t - (s.t - 0.35)) / 0.35;
+          if (!s.fired && k > 0 && k < 1) ps.emit(at.clone().add(new THREE.Vector3(0, HEAD * (0.9 + k), 0)), 0, 0, 0, s.color, 0.25);
+        }
+        light.intensity *= Math.max(0, 1 - dt * 5);
+        ps.update(dt);
+        return t < 3;
+      },
+      remove() {
+        ps.remove();
+        light.release();
+      },
+    };
+  }
+
+  // A soft upright column of light facing the camera (searched buildings flash with it).
+  const beamMat = (color) =>
+    new THREE.ShaderMaterial({
+      uniforms: { color: { value: color }, env: { value: 0 } },
+      vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: `uniform vec3 color; uniform float env; varying vec2 vUv;
+        void main() {
+          float x = 1.0 - abs(vUv.x * 2.0 - 1.0);
+          float a = x * x * pow(max(1.0 - vUv.y, 0.0), 1.4) * smoothstep(0.0, 0.08, vUv.y);
+          gl_FragColor = vec4(color * a * env, 1.0);
+        }`,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+  /** Search: the buildings searched flash blue one after another, left to right (spec 09 §3.2). */
+  function searchFlash(ids) {
+    const list = ids.map((id) => buildings.get(id)).filter(Boolean).sort((a, b) => a.pixel[0] - b.pixel[0]).slice(0, 24);
+    if (!list.length) return null;
+    const STEP = Math.min(0.12, 1.6 / list.length);
+    const ON = 0.55;
+    const blue = linear("rgb(90,160,255)");
+    const flashes = list.map((b, i) => {
+      const r = b.pos.length() * 0.07;
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(r * 1.5, r * 3.2).translate(0, r * 1.6, 0), beamMat(blue.clone().multiplyScalar(night ? 2.2 : 1.6)));
+      m.position.copy(frontOf(b));
+      m.quaternion.copy(camera.quaternion);
+      m.renderOrder = 3;
+      scene.add(m);
+      const l = fxLight(blue, r * 2, b.pos.clone().add(new THREE.Vector3(0, r * 0.8, r * 0.5)));
+      return { m, l, start: i * STEP };
+    });
+    let t = 0;
+    return {
+      update(dt) {
+        t += dt;
+        for (const f of flashes) {
+          const k = THREE.MathUtils.clamp((t - f.start) / ON, 0, 1);
+          const env = k > 0 && k < 1 ? Math.sin(k * Math.PI) : 0;
+          f.m.material.uniforms.env.value = env;
+          f.l.intensity = env * (night ? 3 : 1.2) * Math.PI;
+        }
+        return t < flashes[flashes.length - 1].start + ON;
+      },
+      remove() {
+        for (const f of flashes) (scene.remove(f.m), f.l.release(), f.m.geometry.dispose(), f.m.material.dispose());
+      },
+    };
+  }
+
+  /** Tests passed: green motes rise around the building for a moment. */
+  function passSparkle(at) {
+    const ps = new Particles(160, HEAD * 0.1, { gravity: -HEAD * 0.15, drag: 0.6 });
+    const green = new THREE.Color("#5dff8a").multiplyScalar(night ? 4 : 3);
+    const light = fxLight(new THREE.Color("#5dff8a"), HEAD * 3, at.clone().add(new THREE.Vector3(0, HEAD, 0)));
+    let t = 0;
+    let acc = 0;
+    return {
+      update(dt) {
+        t += dt;
+        acc += dt;
+        while (t < 1.8 && acc > 0.02) {
+          acc -= 0.02;
+          const p = at.clone().add(new THREE.Vector3(rand(-0.9, 0.9) * HEAD, rand(0, 0.6) * HEAD, rand(-0.3, 0.3) * HEAD));
+          ps.emit(p, 0, HEAD * rand(0.4, 0.8), 0, green, rand(0.9, 1.4));
+        }
+        light.intensity = Math.max(0, Math.sin(Math.min(t / 2.4, 1) * Math.PI)) * (night ? 2.5 : 1) * Math.PI;
+        ps.update(dt);
+        return t < 3.2;
+      },
+      remove() {
+        ps.remove();
+        light.release();
+      },
+    };
+  }
+
+  /** Two agents wrote the same file: sparks clash over the building's door (spec 09 §3.2, 5 s). */
+  function clash(at) {
+    const ps = new Particles(300, HEAD * 0.09, { gravity: HEAD * 2.2, drag: 0.8 });
+    const hot = [new THREE.Color("#ff5a3c"), new THREE.Color("#ffb347")].map((c) => c.multiplyScalar(night ? 6 : 4));
+    const mid = at.clone().add(new THREE.Vector3(0, HEAD * 1.1, 0.4));
+    const light = fxLight(new THREE.Color("#ff7040"), HEAD * 2.5, mid);
+    // the bright flash where the blades meet (the painting itself takes no scene light)
+    const flash = new THREE.Mesh(new THREE.PlaneGeometry(HEAD * 1.1, HEAD * 1.1), glowMat(linear("rgb(255,190,120)"), night ? 3 : 2.2, false, 0));
+    flash.position.copy(mid);
+    flash.quaternion.copy(camera.quaternion);
+    flash.renderOrder = 3;
+    scene.add(flash);
+    let t = 0;
+    let acc = 0;
+    return {
+      update(dt) {
+        t += dt;
+        acc += dt;
+        // bursts a few times a second, as if two blades meet
+        const beat = Math.sin(t * 9) > 0.6;
+        while (t < 5 && acc > 0.006) {
+          acc -= 0.006;
+          if (!beat) continue;
+          const side = Math.random() < 0.5 ? -1 : 1;
+          const [x, y, z] = sphereDir();
+          const sp = HEAD * rand(0.8, 1.6);
+          ps.emit(mid, (x * 0.6 - side * 0.5) * sp, Math.abs(y) * sp + HEAD * 0.4, z * 0.4 * sp, hot[(Math.random() * 2) | 0], rand(0.4, 0.8));
+        }
+        light.intensity = (beat && t < 5 ? 1 : 0.2) * (night ? 3 : 1.2) * Math.PI;
+        flash.material.uniforms.alpha.value = t < 5 ? Math.max(0, Math.sin(t * 9) - 0.3) * 1.3 : 0;
+        ps.update(dt);
+        return t < 5.7;
+      },
+      remove() {
+        ps.remove();
+        light.release();
+        scene.remove(flash);
+        flash.geometry.dispose();
+        flash.material.dispose();
+      },
+    };
+  }
+
+  // A magic circle under a casting agent, in the agent's colour (spec 09 §3.2: exec).
+  const castMat = (color) =>
+    premul(
+      MAGIC +
+        `uniform float time, fade, day; uniform vec3 tint; varying vec2 vUv;
+         void main() {
+           vec2 p = (vUv - 0.5) * 2.0;
+           float o = mg_circle(p, time * 2.5, 0.03 * mix(1.0, 1.4, day));
+           float halo = smoothstep(1.0, 0.0, length(p)) * 0.18;
+           float i = (o * (0.85 + 0.15 * sin(time * 6.0)) + halo) * fade;
+           gl_FragColor = vec4(mix(tint, vec3(1.0), o * 0.4) * i * mix(2.4, 1.6, day), clamp(i * mix(0.4, 0.85, day), 0.0, 0.95));
+         }`,
+      { fade: { value: 0 }, day: { value: night ? 0 : 1 }, tint: { value: color.clone() } },
+    );
+  const CAST_S = 2.5; // the circle shows this long after each command
+  const CHEER_FRESH_MS = 4000; // a Stop older than this when it arrives gets no fireworks (replays, page loads)
+  const FOOT_LIFE = 3.5; // seconds a footprint glows
+  const footGeo = new THREE.PlaneGeometry(1, FOOT_ASPECT * 1.3);
+
   // ---------------------------------------------------------------- agents and building states from live state
   const COLORS = { hero: "#ff9a3c", mage: "#b56cff", priest: "#3fe0c8" };
   const CLIP = {
@@ -609,7 +879,15 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       this.facingLeft = false;
       this.tag = makeAgentTag(this.color);
       this.tagAt = this.pos.clone();
+      this.circle = footEllipse(this.h * 1.25, castMat(this.color));
+      this.circle.visible = false;
+      this.stride = 0;
+      this.footSide = 1;
+      this.fade = 1; // 1 while in town; down to 0 as it leaves
       this.state = a;
+      // effects that were already over when the agent appeared do not replay
+      this.cheered = a.cheer;
+      this.searched = a.search?.at ?? null;
     }
     // Standing about: the plain idle most of the time, now and then another idle clip from the pack
     // (any sprite named <character>_idle_*), each played through once before the next is picked.
@@ -667,8 +945,11 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
         const dx = px - bx;
         if (Math.abs(dx) > 0.15 * dt * 60) this.facingLeft = dx < 0;
       }
+      if (walking) this.dropPrints(this.pos.distanceTo(before));
       const clips = CLIP[this.character] ?? {};
-      const clip = walking ? clips.walk : clips[this.state.action];
+      // waiting for the person: dozing, when the character has a dozing clip (bench and sitting come with art)
+      const doze = `${this.character}_idle_doze`;
+      const clip = walking ? clips.walk : clips[this.state.action] ?? (this.state.action === "wait" && loaded.has(doze) ? doze : undefined);
       const name = clip ?? this.idleClip(dt);
       // mirror when the clip faces the other way than the walk (sheet "faces", else known defaults)
       const facesLeft = (pack.sprites[name]?.faces ?? (CLIPS_FACING_LEFT.has(name) ? "left" : "right")) === "left";
@@ -705,6 +986,63 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
         this.sparks.origin.copy(this.pos).add(new THREE.Vector3(this.h * 0.05, this.h * 0.28, 0.05));
         this.sparks.update(dt);
       }
+      this.updateEvents();
+    }
+    // Effects tied to the times in the agent's state (townState.js): circle, fireworks, search flashes.
+    updateEvents() {
+      const { cast, cheer, search } = this.state;
+      const nowMs = Date.now();
+      const since = cast == null ? Infinity : (nowMs - cast) / 1000;
+      const k = this.fade * (since < 0.25 ? since / 0.25 : since < CAST_S ? 1 : since < CAST_S + 0.5 ? 1 - (since - CAST_S) / 0.5 : 0);
+      this.circle.visible = k > 0.001 && this.path.length === 0;
+      if (this.circle.visible) {
+        this.circle.material.uniforms.fade.value = Math.max(0, k);
+        placeAtFeet(this.circle, this.pos, 0);
+        this.circle.position.y -= this.h * 0.02;
+      }
+      if (cheer != null && cheer !== this.cheered) {
+        this.cheered = cheer;
+        if (nowMs - cheer < CHEER_FRESH_MS) effects.add(fireworks(this.pos.clone(), this.color));
+      }
+      if (search && search.at !== this.searched) {
+        this.searched = search.at;
+        const e = nowMs - search.at < CHEER_FRESH_MS ? searchFlash(search.buildings) : null;
+        if (e) effects.add(e);
+      }
+      this.tag.zzz.style.display = this.state.action === "wait" && !this.path.length ? "block" : "none";
+    }
+    // Glowing footprints in the agent's colour, left and right, fading after a few seconds.
+    dropPrints(moved) {
+      this.stride += moved;
+      if (this.stride < this.h * 0.26) return;
+      this.stride = 0;
+      this.footSide = -this.footSide;
+      const m = new THREE.Mesh(footGeo, glowMat(this.color, night ? 2.2 : 1.6, false, 0.9));
+      m.scale.setScalar(this.h * 0.11);
+      m.renderOrder = 1;
+      placeAtFeet(m, this.pos, this.footSide * this.h * 0.05);
+      scene.add(m);
+      let t = 0;
+      effects.add({
+        update(dt) {
+          t += dt;
+          m.material.uniforms.alpha.value = 0.9 * Math.max(0, 1 - t / FOOT_LIFE) ** 1.5;
+          return t < FOOT_LIFE;
+        },
+        remove() {
+          scene.remove(m);
+          m.material.dispose();
+        },
+      });
+    }
+    // Leaving the town (10 minutes quiet, spec 09 §3.2): everything fades with `f` (1 -> 0).
+    setFade(f) {
+      this.fade = f;
+      this.sprite.mat.opacity = f;
+      this.shadow.material.uniforms.alpha.value = 0.4 * f;
+      this.ring.material.uniforms.alpha.value = (night ? 0.75 : 0.65) * f;
+      this.light.intensity = (night ? 0.8 : 0.3) * Math.PI * f;
+      this.tag.el.style.opacity = String(f);
     }
     updateTag() {
       const { name, prompt } = this.state;
@@ -721,7 +1059,7 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     }
     remove() {
       this.tag.remove();
-      for (const m of [this.shadow, this.ring, this.light]) scene.remove(m);
+      for (const m of [this.shadow, this.ring, this.light, this.circle]) scene.remove(m);
       this.sprite.remove();
       this.alert?.remove();
       this.sparks?.remove();
@@ -734,6 +1072,61 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       this.barriers = new Map();
       this.scaffolds = new Map();
       this.spills = new Map();
+      this.failing = new Map(); // tests failed: black smoke and a small fire until the next run
+      this.passShown = new Map(); // building -> the passed run already celebrated
+      this.clashShown = new Set();
+    }
+    // Test and build results (spec 09 §4): failed = black smoke with embers until the next run;
+    // passed = a moment of green. The green / white flags come with the art.
+    updateTests(tests = {}) {
+      const failed = new Set(Object.keys(tests).filter((b) => tests[b].outcome === "failed"));
+      this.sync(this.failing, failed, (pos, b) => {
+        // a little toward the camera, so the painted roof does not hide it
+        const roof = roofOf(b);
+        const cloud = smokeCloud([roof], { tint: night ? new THREE.Color(0.3, 0.26, 0.25) : new THREE.Color(0.07, 0.06, 0.06), alpha: night ? 0.85 : 0.8, per: 32, life: 3.5, rise: 4.5, scale: 2.4, drift: 1.4 });
+        const embers = new Particles(60, HEAD * 0.07, { gravity: -HEAD * 0.3, drag: 0.5 });
+        const ember = new THREE.Color("#ff6a2a").multiplyScalar(night ? 5 : 3);
+        // the painting is not lit by scene lights: the small fire is a flickering glow in front of the roof
+        const fire = new THREE.Mesh(new THREE.PlaneGeometry(HEAD * 0.9, HEAD * 0.9), glowMat(linear("rgb(255,120,40)"), night ? 2.4 : 1.8, false, 0.9));
+        fire.position.copy(roof);
+        fire.quaternion.copy(camera.quaternion);
+        fire.renderOrder = 3;
+        scene.add(fire);
+        let acc = 0;
+        let t = 0;
+        return {
+          tick(dt) {
+            t += dt;
+            acc += dt;
+            while (acc > 0.08) {
+              acc -= 0.08;
+              embers.emit(roof.clone().add(new THREE.Vector3(rand(-0.5, 0.5), 0, rand(-0.3, 0.3))), rand(-0.2, 0.6), HEAD * rand(0.3, 0.7), 0, ember, rand(0.8, 1.6));
+            }
+            fire.material.uniforms.alpha.value = 0.55 + 0.35 * Math.abs(Math.sin(t * 13) * Math.sin(t * 7.3));
+            cloud.update(dt);
+            embers.update(dt);
+          },
+          remove: () => (cloud.remove(), embers.remove(), scene.remove(fire), fire.geometry.dispose(), fire.material.dispose()),
+        };
+      });
+      for (const [b, r] of Object.entries(tests)) {
+        if (r.outcome !== "passed" || this.passShown.get(b) === r.at) continue;
+        this.passShown.set(b, r.at);
+        const at = buildings.has(b) ? frontOf(buildings.get(b)) : null;
+        if (at && r.at != null && Date.now() - r.at < CHEER_FRESH_MS) effects.add(passSparkle(at));
+      }
+    }
+    updateConflicts(list = []) {
+      for (const c of list) {
+        const k = `${c.building}@${c.at}`;
+        if (this.clashShown.has(k)) continue;
+        this.clashShown.add(k);
+        const at = buildings.has(c.building) ? frontOf(buildings.get(c.building)) : null;
+        if (at && Date.now() - c.at < 5000) effects.add(clash(at));
+      }
+    }
+    tick(dt) {
+      for (const f of this.failing.values()) f.tick(dt);
     }
     sync(map, want, make) {
       for (const [id, o] of map) if (!want.has(id)) (o.remove(), map.delete(id));
@@ -748,8 +1141,9 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
         c.renderOrder = 3;
         scene.add(c);
         parts.push(c);
-        parts.push(omni(new THREE.Color("rgb(255,70,80)"), night ? 3 : 1.2, r * 1.8, pos.clone().add(new THREE.Vector3(0, r * 0.5, r * 0.6)), 1));
-        return { remove: () => parts.forEach((p) => scene.remove(p)) };
+        const l = fxLight(new THREE.Color("rgb(255,70,80)"), r * 1.8, pos.clone().add(new THREE.Vector3(0, r * 0.5, r * 0.6)));
+        l.intensity = (night ? 3 : 1.2) * Math.PI;
+        return { remove: () => (parts.forEach((p) => scene.remove(p)), l.release()) };
       });
       this.sync(this.scaffolds, writing, (pos) => {
         const s = new Sprite(0);
@@ -764,35 +1158,37 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
         const r = pos.length() * 0.07;
         const at = groundAt(b.pixel[0], b.pixel[1] + 20) ?? pos.clone().multiplyScalar(0.985); // in front of the door
         const m = groundPlane(r * 2.2, r * 5, spillMat(0.9), at);
-        const l = omni(new THREE.Color("rgb(255,175,100)"), 2, r * 1.6, at.clone().add(new THREE.Vector3(0, r * 0.4, 0)), 1);
-        return { remove: () => (scene.remove(m), scene.remove(l)) };
+        const l = fxLight(new THREE.Color("rgb(255,175,100)"), r * 1.6, at.clone().add(new THREE.Vector3(0, r * 0.4, 0)));
+        l.intensity = 2 * Math.PI;
+        return { remove: () => (scene.remove(m), l.release()) };
       });
       for (const s of this.scaffolds.values()) s.update(0);
     }
   }
 
-  // ---------------------------------------------------------------- chimney smoke (pack "chimneys": painting pixels)
-  const smoke = (() => {
-    const sources = ambientOn ? (V.chimneys ?? []).map((p) => groundAt(p[0], p[1])).filter(Boolean) : [];
-    if (!sources.length) return null;
-    const PER = 18;
-    const n = sources.length * PER;
+  // ---------------------------------------------------------------- smoke (chimneys; failed tests)
+  /**
+   * Puffs rising from each of `sources` (world points), drifting right with a light wind.
+   * { tint, alpha, per: puffs per source, life: s, rise: m, scale, drift: m } -> { update, remove }.
+   */
+  function smokeCloud(sources, { tint, alpha = 0.42, per = 18, life: LIFE_S = 5, rise = 4.5, scale: grow = 0.9, drift = 1.6 }) {
+    const n = sources.length * per;
     const pos = new Float32Array(n * 3);
     const life = new Float32Array(n); // 0..1 through each puff's rise
     const seed = new Float32Array(n);
-    for (let i = 0; i < n; i++) (life[i] = (i % PER) / PER), (seed[i] = Math.random());
+    for (let i = 0; i < n; i++) (life[i] = (i % per) / per), (seed[i] = Math.random());
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
     g.setAttribute("life", new THREE.BufferAttribute(life, 1));
     g.setAttribute("seed", new THREE.BufferAttribute(seed, 1));
     const mat = new THREE.ShaderMaterial({
-      uniforms: { tint: { value: night ? new THREE.Color(0.32, 0.34, 0.42) : new THREE.Color(0.92, 0.9, 0.86) }, scale: { value: 1 } },
+      uniforms: { tint: { value: tint }, scale: { value: 1 }, alpha: { value: alpha } },
       vertexShader: `attribute float life, seed; uniform float scale; varying float vLife, vSeed;
         void main() { vLife = life; vSeed = seed; vec4 mv = modelViewMatrix * vec4(position, 1.0);
           gl_PointSize = scale * (0.6 + 2.6 * life) / -mv.z; gl_Position = projectionMatrix * mv; }`,
-      fragmentShader: `uniform vec3 tint; varying float vLife, vSeed;
+      fragmentShader: `uniform vec3 tint; uniform float alpha; varying float vLife, vSeed;
         void main() { vec2 p = gl_PointCoord - 0.5; float d = length(p) * 2.0;
-          float a = smoothstep(1.0, 0.2, d) * smoothstep(0.0, 0.12, vLife) * (1.0 - vLife) * 0.42;
+          float a = smoothstep(1.0, 0.2, d) * smoothstep(0.0, 0.12, vLife) * (1.0 - vLife) * alpha;
           gl_FragColor = vec4(tint, a); }`,
       transparent: true,
       depthWrite: false,
@@ -801,31 +1197,68 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     pts.frustumCulled = false;
     pts.renderOrder = 3;
     scene.add(pts);
-    const RISE = 4.5; // metres over a puff's life
-    const LIFE_S = 5;
     return {
       update(dt) {
-        mat.uniforms.scale.value = size().h * PIXEL_RATIO * 0.9;
+        mat.uniforms.scale.value = size().h * PIXEL_RATIO * grow;
         for (let i = 0; i < n; i++) {
           life[i] += dt / LIFE_S;
           if (life[i] >= 1) (life[i] -= 1), (seed[i] = Math.random());
-          const src = sources[Math.floor(i / PER)];
+          const src = sources[Math.floor(i / per)];
           const t = life[i];
-          // up, drifting with a light wind to the right, wobbling
-          pos[i * 3] = src.x + t * 1.6 + Math.sin(t * 6 + seed[i] * 6.28) * 0.25 * t;
-          pos[i * 3 + 1] = src.y + t * RISE;
+          pos[i * 3] = src.x + t * drift + Math.sin(t * 6 + seed[i] * 6.28) * 0.25 * t;
+          pos[i * 3 + 1] = src.y + t * rise;
           pos[i * 3 + 2] = src.z + Math.cos(t * 5 + seed[i] * 6.28) * 0.2 * t;
         }
         g.attributes.position.needsUpdate = true;
         g.attributes.life.needsUpdate = true;
       },
+      remove() {
+        scene.remove(pts);
+        g.dispose();
+        mat.dispose();
+      },
+      hide: () => (pts.visible = false),
     };
+  }
+  // chimney smoke: only where the painting shows a smoking chimney (pack "chimneys": painting pixels)
+  const smoke = (() => {
+    const sources = ambientOn ? (V.chimneys ?? []).map((p) => groundAt(p[0], p[1])).filter(Boolean) : [];
+    if (!sources.length) return null;
+    return smokeCloud(sources, { tint: night ? new THREE.Color(0.32, 0.34, 0.42) : new THREE.Color(0.92, 0.9, 0.86) });
   })();
+
+  // Where effects on a building stand: on the ground just in front of its door, a step toward the
+  // camera. The building's own point lies inside the painted house, which hid anything put there.
+  function frontOf(b) {
+    const p = groundAt(b.pixel[0], b.pixel[1] + 18) ?? b.pos.clone();
+    return p.addScaledVector(p.clone().normalize(), -2.5);
+  }
+  // Up in front of the roof: as high as the building's picking box reaches on screen (the painting's
+  // pixel at the top often shows something nearer, so its depth cannot be used), or the site's top.
+  function roofOf(b) {
+    const f = frontOf(b);
+    if (b.site) return f.add(new THREE.Vector3(0, (sites.get(b.id)?.sprite.h ?? 5) * 0.7, 0));
+    if (b.box) return f.add(new THREE.Vector3(0, ((b.pixel[1] - b.box[1]) * 0.6 * f.length()) / V.focalPx, 0));
+    return f.add(new THREE.Vector3(0, 4, 0));
+  }
 
   // ---------------------------------------------------------------- signs and name tags (page text over the canvas, spec 09 §7)
   const tagLayer = document.createElement("div");
   Object.assign(tagLayer.style, { position: "absolute", inset: "0", pointerEvents: "none", overflow: "hidden" });
   container.appendChild(tagLayer);
+  {
+    const style = document.createElement("style");
+    style.textContent = `
+      .town-zzz span { position: absolute; left: 12px; bottom: 0; opacity: 0; animation: town-zzz 1.8s linear infinite; }
+      .town-zzz span:nth-child(2) { font-size: 15px; }
+      @keyframes town-zzz {
+        0% { transform: translate(0, 0); opacity: 0; }
+        15% { opacity: 1; }
+        100% { transform: translate(16px, -22px); opacity: 0; }
+      }
+      @media (prefers-reduced-motion: reduce) { .town-zzz span { animation: none; opacity: 1; position: static; } }`;
+    tagLayer.appendChild(style);
+  }
   // pixel font (index.html), drawn at its own 12 px so the strokes stay on whole pixels
   const TAG_FONT = "400 12px/1.25 'Fusion Pixel 12', 'Segoe UI', sans-serif";
   // A wooden board on a post in front of each building, with the folder's name; dashed when the
@@ -901,9 +1334,19 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       font: TAG_FONT,
       whiteSpace: "nowrap",
     });
-    el.append(bubble, name);
+    // waiting for the person: "z z z" drifting up (spec 09 §3.2)
+    const zzz = document.createElement("div");
+    zzz.className = "town-zzz";
+    for (const [i, c] of ["z", "Z", "z"].entries()) {
+      const s = document.createElement("span");
+      s.textContent = c;
+      s.style.animationDelay = `${i * 0.6}s`;
+      zzz.appendChild(s);
+    }
+    Object.assign(zzz.style, { display: "none", height: "26px", width: "40px", position: "relative", color: "#dfe8ff", font: TAG_FONT, textShadow: "0 1px 0 #10142a, 0 0 4px #10142a" });
+    el.append(bubble, zzz, name);
     tagLayer.appendChild(el);
-    return { el, bubble, name, said: null, remove: () => el.remove() };
+    return { el, bubble, zzz, name, said: null, remove: () => el.remove() };
   }
   const BUBBLE_MS = 6000; // how long a new prompt shows over the agent's head
   const BUBBLE_CHARS = 20; // spec 09 §3.2: the first 20 characters
@@ -1012,10 +1455,11 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       if (!hidden) el.style.transform = `translate(${((projected.x + 1) / 2) * w}px, ${((1 - projected.y) / 2) * h}px) translate(-50%, -100%)`;
     };
     for (const s of signs.values()) put(s.el, s.at);
-    for (const a of agents.values()) put(a.tag.el, a.tagAt);
+    for (const a of [...agents.values(), ...leaving]) put(a.tag.el, a.tagAt);
   }
 
   const agents = new Map();
+  const leaving = new Set(); // agents fading out of the town
   const fx = new BuildingFx();
   let live = { agents: [], recent: [] };
   function setState(next) {
@@ -1027,7 +1471,7 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       if (!agents.has(a.key)) agents.set(a.key, new Agent(a));
       else agents.get(a.key).sync(a);
     }
-    for (const [k, ag] of agents) if (!seen.has(k)) (ag.remove(), agents.delete(k));
+    for (const [k, ag] of agents) if (!seen.has(k)) (leaving.add(ag), agents.delete(k));
 
     const at = new Set(live.agents.filter((a) => a.action !== "idle").map((a) => a.building));
     const recent = new Set(live.recent);
@@ -1036,6 +1480,8 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     const writing = new Set(live.agents.filter((a) => a.action === "write").map((a) => a.building));
     const lit = new Set(windowsOn ? V.buildings.filter((b, i) => winLevels[i] >= SPILL_MIN).map((b) => b.id) : []);
     fx.update(blocked, writing, lit);
+    fx.updateTests(live.tests);
+    fx.updateConflicts(live.conflicts);
     reliefMat.uniforms.readEnergy.value = live.agents.some((a) => a.action === "read") ? (night ? 2.2 : 1.4) : 0;
   }
   setSites(initialSites);
@@ -1219,9 +1665,17 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     time.value += dt;
     reliefMat.uniforms.time.value = time.value;
     for (const a of agents.values()) a.update(dt);
+    for (const a of leaving) {
+      a.update(dt);
+      a.setFade(a.fade - dt / 1.5);
+      if (a.fade <= 0) (a.remove(), leaving.delete(a));
+    }
+    for (const e of effects) if (!e.update(dt)) (e.remove(), effects.delete(e));
+    fx.tick(dt);
     flickerLights(time.value);
     smoke?.update(dt);
     for (const o of sites.values()) o.sprite.update(dt);
+    pointScale.value = (size().h * PIXEL_RATIO) / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
     placeTags();
     dofPass.keepSharp([...[...agents.values()].map((a) => a.sprite.mesh.position), ...[...sites.values()].map((o) => o.pos)]);
     renderer.info.reset();
@@ -1277,6 +1731,26 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     }
     raf = requestAnimationFrame(frame);
   }
+  // Warm-up: one frame with a copy of each event effect, so their shaders are built during loading
+  // and not when the first effect shows (that stalled the frame for about a second). The copies stay,
+  // hidden, which keeps three.js from throwing the built shaders away.
+  {
+    const at = buildings.get("(root)")?.pos ?? new THREE.Vector3(0, 0, -50);
+    const off = new THREE.Color(0, 0, 0);
+    const beam = new THREE.Mesh(new THREE.PlaneGeometry(0.01, 0.01), beamMat(off));
+    beam.position.copy(at);
+    scene.add(beam);
+    const ps = new Particles(2, 0.01);
+    ps.emit(at, 0, 0, 0, off, 1);
+    ps.update(0);
+    const circle = footEllipse(0.01, castMat(off));
+    circle.position.copy(at);
+    const cloud = smokeCloud([at], { tint: off, alpha: 0, per: 1 });
+    cloud.update(0);
+    composer.render(0);
+    beam.visible = ps.points.visible = circle.visible = false;
+    cloud.hide();
+  }
   let raf = requestAnimationFrame(frame);
   // now the extra idle clips, one at a time so the first seconds stay smooth
   (async () => {
@@ -1288,6 +1762,9 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     setSites,
     setSelected,
     pick,
+    /** for checks: where each agent stands and what it plays */
+    debugAgents: () => [...agents.values(), ...leaving].map((a) => ({ key: a.key, pos: a.pos.toArray(), clip: a.sprite.name, path: a.path.length, fade: a.fade, circle: a.circle.visible && +a.circle.material.uniforms.fade.value.toFixed(2) })),
+    debugFx: () => ({ effects: effects.size, failing: [...fx.failing.keys()], lightsUsed: fxLights.filter((l) => !l.free).length }),
     get fps() {
       return fps;
     },
