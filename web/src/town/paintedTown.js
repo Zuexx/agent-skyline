@@ -817,7 +817,8 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
   const tagLayer = document.createElement("div");
   Object.assign(tagLayer.style, { position: "absolute", inset: "0", pointerEvents: "none", overflow: "hidden" });
   container.appendChild(tagLayer);
-  const TAG_FONT = "700 12px/1.25 'Segoe UI', system-ui, sans-serif";
+  // pixel font (index.html), drawn at its own 12 px so the strokes stay on whole pixels
+  const TAG_FONT = "400 12px/1.25 'Fusion Pixel 12', 'Segoe UI', sans-serif";
   // A wooden board on a post in front of each building, with the folder's name; dashed when the
   // building is still a construction site.
   const signs = new Map(); // id -> { el, board, at }
