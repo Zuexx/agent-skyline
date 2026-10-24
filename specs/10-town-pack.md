@@ -56,6 +56,9 @@ A folder in the theme pack format (`06-themes.md`), `renderer: "painted"`:
   bg/day.webp           painted town, up to 4096 x 2048
   bg/day_depth.png      16-bit depth, up to 2048 x 1024, same framing
   bg/day_windows.png    mask: each building's windows in its own colour index (for "read" glow)
+  bg/day_areas.png      optional, background.areas: each building's outline, R = building index + 1,
+                        at depth size (map modes fog / tint / line drawing per house; without it the
+                        renderer derives one from the depth map, which can take in a patch of ground)
   bg/night.webp, bg/night_depth.png, bg/night_windows.png
   sprites/...           characters and effects: albedo + normal per frame
 ```
