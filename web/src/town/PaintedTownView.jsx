@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPaintedTown } from "./paintedTown.js";
-import { houseStates, townState } from "./townState.js";
+import { BIG_CHANGE, buildingModes, houseStates, townState } from "./townState.js";
 import { buildingOf, townBuildings } from "./townLayout.js";
 import { useNow } from "../lib/useNow.js";
 import { t } from "../lib/i18n.js";
@@ -15,9 +15,11 @@ import { t } from "../lib/i18n.js";
  * (null on open ground); `folder` is the building whose sign is marked. `working` (Map path ->
  * uncommitted change), `locked` (zone globs) and `scopeAllow` (task scope globs) set what stands on
  * the houses (scaffolds, barriers, scope rings); `warnings` (lib/scope.js) and `reviewed` (Set of
- * paths ticked off in the review) raise and lower the out-of-scope marks.
+ * paths ticked off in the review) raise and lower the out-of-scope marks. `mapMode` is the
+ * toolbar's view (folder / role / touched / diff, spec 09 §5); `diff` the compared branch's
+ * changes (Map path -> { status }) for the diff view.
  */
-export default function PaintedTownView({ pack, variant, activity, agentSeq, paths = [], view = "pano", names = {}, prompts = {}, rootName = "", folder = null, onPickFolder, working = null, locked = [], scopeAllow = [], warnings = null, reviewed = null }) {
+export default function PaintedTownView({ pack, variant, activity, agentSeq, paths = [], view = "pano", names = {}, prompts = {}, rootName = "", folder = null, onPickFolder, working = null, locked = [], scopeAllow = [], warnings = null, reviewed = null, mapMode = "folder", diff = null }) {
   const box = useRef(null);
   const renderer = useRef(null);
   const [error, setError] = useState(null);
@@ -28,16 +30,35 @@ export default function PaintedTownView({ pack, variant, activity, agentSeq, pat
   const sites = useMemo(() => town.filter((b) => !b.painted && b.lot).map((b) => ({ id: b.id, lot: b.lot })), [town]);
   const state = useMemo(() => {
     const s = townState(activity, agentSeq, buildingIds, now, prompts, warnings);
-    const houses = houseStates(buildingIds, { working, locked, allow: scopeAllow, warnings, reviewed });
+    let houses = houseStates(buildingIds, { working, locked, allow: scopeAllow, warnings, reviewed });
+    const mode = mapMode === "diff" && !diff ? "folder" : mapMode;
+    const modes = buildingModes(buildingIds, paths, { files: activity?.files, diff });
     const labels = Object.fromEntries(["blocked", "failed", "scaffold", "warn", "scope"].map((k) => [k, t(`town.chip.${k}`)]));
     labels.warnHint = (n) => t("town.chip.warnHint", { n });
-    return { ...s, houses, labels, agents: s.agents.map((a) => ({
+    labels.role = Object.fromEntries(["code", "test", "doc", "config", "asset"].map((r) => [r, t(`group.${r}`)]));
+    labels.added = (n) => t("town.chip.added", { n });
+    labels.deleted = (n) => t("town.chip.deleted", { n });
+    if (mode === "diff") {
+      // the branch's construction drawing: no agents or live events; scaffolds where it modified
+      // files, the locked barriers stay (spec 09 §5)
+      houses = Object.fromEntries(
+        Object.entries(modes)
+          .map(([id, m]) => {
+            const n = m.modified + m.added;
+            const level = n === 0 ? 0 : n < 3 ? 1 : n < BIG_CHANGE ? 2 : 3;
+            return [id, { changes: n, level, locked: !!houses[id]?.locked, scope: false, warn: 0 }];
+          })
+          .filter(([, h]) => h.level || h.locked),
+      );
+      return { agents: [], recent: [], tests: {}, conflicts: [], houses, labels, mode, modes };
+    }
+    return { ...s, houses, labels, mode, modes, agents: s.agents.map((a) => ({
       ...a,
       // a subagent's name tag says whose helper it is (lib/sessions.js); prompts go to the main agent
       name: names[a.key] ?? null,
       prompt: a.parent ? null : (prompts[a.key] ?? null),
     })) };
-  }, [activity, agentSeq, buildingIds, now, names, prompts, working, locked, scopeAllow, warnings, reviewed]);
+  }, [activity, agentSeq, buildingIds, now, names, prompts, working, locked, scopeAllow, warnings, reviewed, mapMode, diff, paths]);
   const stateRef = useRef(state);
   stateRef.current = state;
   const folderRef = useRef(folder);

@@ -3,6 +3,7 @@
 // the town follows the same events as the rest of the page. Pure, no React, no three.js.
 import { computeConflicts } from "../lib/conflicts.js";
 import { matchGlob } from "../lib/zones.js";
+import { roleOf } from "../lib/views.js";
 
 export const CHARACTERS = ["hero", "mage", "priest"]; // by order of first appearance (spec 09)
 export const ACTIVE_MS = 3 * 60_000; // an agent with no event for this long goes home (idle)
@@ -222,4 +223,37 @@ export const MAX_SHOWN = 2;
 export function prioritize(kinds) {
   const sorted = [...new Set(kinds)].filter((k) => EFFECT_ORDER.includes(k)).sort((a, b) => EFFECT_ORDER.indexOf(a) - EFFECT_ORDER.indexOf(b));
   return { show: sorted.slice(0, MAX_SHOWN), folded: sorted.slice(MAX_SHOWN) };
+}
+
+/**
+ * What the map modes (spec 09 §5) need per building: { [id]: { role, touched, added, modified,
+ * deleted } }. role: the role most of its files have (lib/views.js roleOf; "spec" counts as
+ * "doc"); touched: "written" | "read" | null in `files` (the activity's files of the shown range);
+ * added / modified / deleted: files in the compared branch's `diff` (Map path -> { status }).
+ */
+export function buildingModes(buildingIds, paths, { files = null, diff = null } = {}) {
+  const out = Object.fromEntries(buildingIds.map((id) => [id, { role: null, touched: null, added: 0, modified: 0, deleted: 0 }]));
+  const roles = new Map(); // id -> Map role -> count
+  for (const p of paths ?? []) {
+    const b = buildingOf(p, buildingIds);
+    if (!b) continue;
+    const r = roleOf(p) === "spec" ? "doc" : roleOf(p);
+    if (!roles.has(b)) roles.set(b, new Map());
+    roles.get(b).set(r, (roles.get(b).get(r) ?? 0) + 1);
+  }
+  for (const [b, m] of roles) out[b].role = [...m].sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0]))[0][0];
+  for (const [p, f] of Object.entries(files ?? {})) {
+    const b = buildingOf(p, buildingIds);
+    if (!b) continue;
+    if (f.writes > 0 || f.blocked > 0) out[b].touched = "written";
+    else if (f.reads > 0 && !out[b].touched) out[b].touched = "read";
+  }
+  for (const [p, c] of diff ?? []) {
+    const b = buildingOf(p, buildingIds);
+    if (!b) continue;
+    if (c.status === "A") out[b].added++;
+    else if (c.status === "D") out[b].deleted++;
+    else out[b].modified++;
+  }
+  return out;
 }

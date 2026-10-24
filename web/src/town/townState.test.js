@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildingOf, houseStates, prioritize, searchedBuildings, townState, ACTIVE_MS, GONE_MS, RECENT_MS, SUB_GONE_MS } from "./townState.js";
+import { buildingModes, buildingOf, houseStates, prioritize, searchedBuildings, townState, ACTIVE_MS, GONE_MS, RECENT_MS, SUB_GONE_MS } from "./townState.js";
 
 const IDS = ["(root)", "web/src/city", "web/src/lib", "web", "specs", "install"];
 const NOW = Date.parse("2026-10-23T12:00:00Z");
@@ -203,5 +203,17 @@ describe("prioritize", () => {
   it("shows the two most important states and folds the rest", () => {
     expect(prioritize(["scope", "warn", "scaffold", "failed"])).toEqual({ show: ["failed", "scaffold"], folded: ["warn", "scope"] });
     expect(prioritize(["scope"])).toEqual({ show: ["scope"], folded: [] });
+  });
+});
+
+describe("buildingModes", () => {
+  it("gives each building its main role, what was touched and the branch diff", () => {
+    const paths = ["web/src/lib/a.js", "web/src/lib/a.test.js", "web/src/lib/b.test.js", "specs/09.md", "specs/x.json", "specs/y.md"];
+    const files = { "specs/09.md": { reads: 2, writes: 0 }, "web/src/lib/a.js": { reads: 1, writes: 1 } };
+    const diff = new Map([["specs/new.md", { status: "A" }], ["specs/09.md", { status: "M" }], ["install/old.sh", { status: "D" }]]);
+    const m = buildingModes(IDS, paths, { files, diff });
+    expect(m["web/src/lib"]).toMatchObject({ role: "test", touched: "written" });
+    expect(m.specs).toMatchObject({ role: "doc", touched: "read", added: 1, modified: 1 });
+    expect(m.install).toMatchObject({ role: null, touched: null, deleted: 1 });
   });
 });

@@ -82,7 +82,7 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     return t;
   }
   const bgFiles = V.background;
-  const [albedoTex, depthTex, readTex, lightTex, haloTex, idTex, ambientTex] = await Promise.all([
+  const [albedoTex, depthTex, readTex, lightTex, haloTex, idTex, ambientTex, areasTex] = await Promise.all([
     tex(bgFiles.albedo),
     tex(V.depth, { srgb: false, nearest: true }),
     tex(bgFiles.reading, { srgb: false }),
@@ -90,6 +90,8 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     bgFiles.halo ? tex(bgFiles.halo, { srgb: false }) : null,
     bgFiles.ids ? tex(bgFiles.ids, { srgb: false, nearest: true }) : null,
     bgFiles.ambient ? tex(bgFiles.ambient, { srgb: false }) : null,
+    // optional: each building's outline, R = building index + 1 (spec 10); else derived below
+    bgFiles.areas ? tex(bgFiles.areas, { srgb: false, nearest: true }) : null,
   ]);
   // Scenery motion (spec 09 §9): off with "reduce motion" in the OS.
   const ambientOn = !!ambientTex && !matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -126,10 +128,23 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       gl_Position = projectionMatrix * modelViewMatrix * vec4(cam, 1.0);
     }`;
   const RELIEF_FS = /* glsl */ `
-    uniform sampler2D albedo, lightTex, haloTex, idTex, readTex, ambientTex;
+    uniform sampler2D albedo, lightTex, haloTex, idTex, readTex, ambientTex, areaTex;
     uniform float win[32];
     uniform bool windowsOn, ambientOn;
     uniform float readEnergy, time;
+    // map modes (spec 09 §5), per building area (areaTex: building index + 1) and for the ground
+    uniform float areaFog[32], areaSketch[32], areaTintA[32];
+    uniform vec3 areaTint[32];
+    uniform float groundFog, groundSketch;
+    uniform vec3 fogCol, paperCol, inkCol;
+    uniform vec2 albedoTexel;
+    float lum(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
+    float vhash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    float vnoise(vec2 p) {
+      vec2 i = floor(p), f = fract(p);
+      f = f * f * (3.0 - 2.0 * f);
+      return mix(mix(vhash(i), vhash(i + vec2(1.0, 0.0)), f.x), mix(vhash(i + vec2(0.0, 1.0)), vhash(i + vec2(1.0, 1.0)), f.x), f.y);
+    }
     varying vec2 vUv;
     varying float vEdge;
     float level(float code) {
@@ -164,6 +179,26 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       }
       // reading: the library windows glow blue (window_glow.gdshader)
       c += vec3(0.073, 0.38, 1.0) * texture2D(readTex, vUv).r * readEnergy * (0.75 + 0.25 * sin(time * 3.0));
+      int ai = int(floor(texture2D(areaTex, vUv).r * 255.0 + 0.5)) - 1;
+      float fog = groundFog, sk = groundSketch, ta = 0.0;
+      vec3 tc = vec3(0.0);
+      if (ai >= 0 && ai < 32) { fog = areaFog[ai]; sk = areaSketch[ai]; ta = areaTintA[ai]; tc = areaTint[ai]; }
+      // role: a wash of the role's colour over the house
+      if (ta > 0.001) c = mix(c, tc * (0.35 + 1.3 * lum(c)), ta);
+      // diff: what did not change turns into a pale line drawing
+      if (sk > 0.001) {
+        vec2 o = albedoTexel * 1.5;
+        float gx = lum(texture2D(albedo, uv + vec2(o.x, 0.0)).rgb) - lum(texture2D(albedo, uv - vec2(o.x, 0.0)).rgb);
+        float gy = lum(texture2D(albedo, uv + vec2(0.0, o.y)).rgb) - lum(texture2D(albedo, uv - vec2(0.0, o.y)).rgb);
+        float e = smoothstep(0.05, 0.25, length(vec2(gx, gy)));
+        c = mix(c, mix(paperCol, inkCol, e), sk * 0.92);
+      }
+      // this session: fog of war over what was not touched, drifting slowly
+      if (fog > 0.001) {
+        float n = vnoise(vUv * vec2(14.0, 7.0) + vec2(time * 0.05, time * 0.02)) * 0.6 + vnoise(vUv * vec2(37.0, 19.0) - vec2(time * 0.03, 0.0)) * 0.4;
+        vec3 fc = fogCol * (0.8 + 0.4 * n);
+        c = mix(c, mix(vec3(lum(c)) * 0.6, fc, 0.8), fog * 0.85);
+      }
       gl_FragColor = vec4(c, 1.0);
     }`;
 
@@ -210,6 +245,17 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       ambientOn: { value: ambientOn },
       readEnergy: { value: 0 },
       time: { value: 0 },
+      areaTex: { value: null },
+      areaFog: { value: new Array(32).fill(0) },
+      areaSketch: { value: new Array(32).fill(0) },
+      areaTintA: { value: new Array(32).fill(0) },
+      areaTint: { value: Array.from({ length: 32 }, () => new THREE.Vector3()) },
+      groundFog: { value: 0 },
+      groundSketch: { value: 0 },
+      fogCol: { value: night ? new THREE.Vector3(0.1, 0.12, 0.19) : new THREE.Vector3(0.72, 0.75, 0.8) },
+      paperCol: { value: night ? new THREE.Vector3(0.07, 0.08, 0.12) : new THREE.Vector3(0.86, 0.84, 0.78) },
+      inkCol: { value: night ? new THREE.Vector3(0.34, 0.4, 0.52) : new THREE.Vector3(0.3, 0.27, 0.24) },
+      albedoTexel: { value: new THREE.Vector2(1 / albedoTex.image.width, 1 / albedoTex.image.height) },
     },
   });
   const stage = new THREE.Group();
@@ -1278,6 +1324,25 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
   // building's point. The relief keeps long triangles along each house's outline, so anything
   // behind the front face is covered; a fixed step forward was right for some houses only.
   const fronts = new Map();
+  const frontDists = new Map();
+  /** The median painted distance over the upper middle of the building's box: its own front. */
+  function frontDistance(b) {
+    if (!frontDists.has(b.id)) {
+      const ds = [];
+      const box = b.box ?? (b.site ? siteBox(b.id) : null);
+      if (box) {
+        for (let i = 0; i < 5; i++) {
+          for (let j = 0; j < 5; j++) {
+            const g = groundAt(box[0] + (box[2] - box[0]) * (0.35 + 0.075 * i), box[1] + (box[3] - box[1]) * (0.2 + 0.08 * j));
+            if (g) ds.push(g.length());
+          }
+        }
+      }
+      ds.sort((x, y) => x - y);
+      frontDists.set(b.id, ds.length ? Math.min(ds[ds.length >> 1], b.pos.length()) : b.pos.length());
+    }
+    return frontDists.get(b.id);
+  }
   function frontOf(b) {
     if (!fronts.has(b.id)) {
       const ds = [];
@@ -1370,7 +1435,20 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     s.board.style.outlineOffset = "1px";
     s.el.style.zIndex = on ? "2" : "1";
   }
-  const CHIP_COLORS = { blocked: "#ff6b6b", failed: "#ff8a4c", scaffold: "#ffc266", warn: "#ffd23f", scope: "#86f5a4" };
+  const CHIP_COLORS = {
+    blocked: "#ff6b6b",
+    failed: "#ff8a4c",
+    scaffold: "#ffc266",
+    warn: "#ffd23f",
+    scope: "#86f5a4",
+    added: "#7dff9a",
+    deleted: "#ff6b6b",
+    "role-code": "#ff9f43",
+    "role-test": "#3fd8c2",
+    "role-doc": "#b39bff",
+    "role-config": "#ffd95e",
+    "role-asset": "#ff7eb6",
+  };
   /** Chips on a building's sign: [{ text, kind, title? }]; redrawn only when they change. */
   function setChips(id, list) {
     const sign = signs.get(id);
@@ -1490,6 +1568,7 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       signs.delete(id);
       buildings.delete(id);
       fronts.delete(id);
+      frontDists.delete(id);
       sites.delete(id);
     }
     for (const [id, { pixel, pos }] of want) {
@@ -1597,6 +1676,11 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
 
     const at = new Set(live.agents.filter((a) => a.action !== "idle").map((a) => a.building));
     const recent = new Set(live.recent);
+    const mode = live.mode ?? "folder";
+    const modeInfo = live.modes ?? {};
+    setModeTargets(mode, modeInfo);
+    // this session: the houses changed in it keep their lights on
+    if (mode === "touched") for (const [id, m] of Object.entries(modeInfo)) if (m.touched === "written") recent.add(id);
     V.buildings.forEach((b, i) => (winLevels[i] = at.has(b.id) ? WIN.agent : recent.has(b.id) ? WIN.recent : WIN.rest));
     // What stands on the houses (spec 09 §4): barriers on locked folders (always, spec §4 note 3) and
     // where an agent was just stopped; scaffolds as high as the uncommitted changes go (at least
@@ -1627,6 +1711,11 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       if (tests[id] && (tests[id].outcome !== "failed" || show.includes("failed"))) shownTests[id] = tests[id];
       const L = live.labels ?? {};
       const chips = [];
+      // mode marks first: the role (stand-in for the guild flag), the branch's new and deleted files
+      const m = modeInfo[id];
+      if (mode === "role" && m?.role) chips.push({ kind: `role-${m.role}`, text: L.role?.[m.role] ?? m.role });
+      if (mode === "diff" && m?.added) chips.push({ kind: "added", text: L.added?.(m.added) ?? `+${m.added}` });
+      if (mode === "diff" && m?.deleted) chips.push({ kind: "deleted", text: L.deleted?.(m.deleted) ?? `-${m.deleted}` });
       // the yellow flag's stand-in until its art arrives: "？" and how many files are unreviewed
       if (show.includes("warn")) chips.push({ kind: "warn", text: `？${h.warn}`, big: true, title: L.warnHint?.(h.warn) });
       for (const k of folded) chips.push({ kind: k, text: k === "warn" ? `${L.warn ?? "?"} ${h.warn}` : (L[k] ?? k), title: k === "warn" ? L.warnHint?.(h.warn) : undefined });
@@ -1638,6 +1727,87 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     fx.updateConflicts(live.conflicts);
     reliefMat.uniforms.readEnergy.value = live.agents.some((a) => a.action === "read") ? (night ? 2.2 : 1.4) : 0;
   }
+  // ---------------------------------------------------------------- map modes (spec 09 §5)
+  // Which painted pixels belong to which house: inside each box (grown up over the roof and a
+  // little sideways), the pixels at about the house's own distance that stand above its base;
+  // where two houses claim one pixel, the nearer wins. The ground behind a house lies much farther,
+  // the ground beside it at its base height: both stay out. Built once from the depth map (the
+  // pack has no outline mask of its own). A pack's own mask (background.areas) is used instead.
+  if (areasTex) reliefMat.uniforms.areaTex.value = areasTex;
+  else {
+    const data = new Uint8Array(DW * DH);
+    const owner = new Float32Array(DW * DH).fill(Infinity);
+    const [cx, cy] = V.principal;
+    const e = B.elements; // world y of a camera point: row 1 of the basis
+    V.buildings.forEach((b, i) => {
+      if (!b.box || i >= 32) return;
+      const f = frontDistance(buildings.get(b.id));
+      const floor = frontOf(buildings.get(b.id)).y + 0.35;
+      const lo = f - 5;
+      const hi = f + 4 + f * 0.03;
+      const [bx0, by0, bx1, by1] = b.box;
+      const w = bx1 - bx0;
+      const h = by1 - by0;
+      const x0 = Math.max(0, Math.floor(bx0 - w * 0.1));
+      const x1 = Math.min(DW - 1, Math.ceil(bx1 + w * 0.1));
+      const y0 = Math.max(0, Math.floor(by0 - h * 0.7));
+      const y1 = Math.min(DH - 1, Math.ceil(by1));
+      for (let y = y0; y <= y1; y++) {
+        for (let x = x0; x <= x1; x++) {
+          const k = y * DW + x;
+          const code = depthPx[k * 4] * 256 + depthPx[k * 4 + 1];
+          if (!code) continue;
+          const z = V.depthNear + ((code - 1) / 65534) * (V.depthFar - V.depthNear);
+          const rx = (x + 0.5 - cx) / V.focalPx;
+          const ry = (y + 0.5 - cy) / V.focalPx;
+          const d = z * Math.sqrt(rx * rx + ry * ry + 1);
+          if (d < lo || d > hi || f >= owner[k]) continue;
+          // the ground climbs behind the houses (the town is on a slope): what lies farther than the
+          // front must stand higher too
+          if (e[1] * rx * z - e[5] * ry * z - e[9] * z < floor + Math.max(0, d - f) * 0.45) continue;
+          owner[k] = f;
+          data[k] = i + 1;
+        }
+      }
+    });
+    const t = new THREE.DataTexture(data, DW, DH, THREE.RedFormat, THREE.UnsignedByteType);
+    t.magFilter = t.minFilter = THREE.NearestFilter;
+    t.needsUpdate = true;
+    reliefMat.uniforms.areaTex.value = t;
+  }
+  // targets per building for the current mode; the uniforms move toward them over MODE_S
+  const MODE_S = 0.6;
+  const ROLE_TINT = { code: "#ff9f43", test: "#3fd8c2", doc: "#b39bff", config: "#ffd95e", asset: "#ff7eb6" };
+  const modeTarget = { fog: new Array(32).fill(0), sketch: new Array(32).fill(0), tintA: new Array(32).fill(0), groundFog: 0, groundSketch: 0 };
+  function setModeTargets(mode, info = {}) {
+    const u = reliefMat.uniforms;
+    V.buildings.forEach((b, i) => {
+      if (i >= 32) return;
+      const m = info[b.id] ?? {};
+      modeTarget.fog[i] = mode === "touched" && !m.touched ? 1 : 0;
+      modeTarget.sketch[i] = mode === "diff" && !(m.added || m.modified || m.deleted) ? 1 : 0;
+      modeTarget.tintA[i] = mode === "role" && m.role ? 0.32 : 0;
+      if (mode === "role" && m.role) {
+        const c = new THREE.Color(ROLE_TINT[m.role] ?? "#ffffff");
+        u.areaTint.value[i].set(c.r, c.g, c.b);
+      }
+    });
+    modeTarget.groundFog = mode === "touched" ? 0.8 : 0;
+    modeTarget.groundSketch = mode === "diff" ? 0.85 : 0;
+  }
+  function stepMode(dt) {
+    const u = reliefMat.uniforms;
+    const k = dt / MODE_S;
+    const toward = (v, t) => v + THREE.MathUtils.clamp(t - v, -k, k);
+    for (let i = 0; i < 32; i++) {
+      u.areaFog.value[i] = toward(u.areaFog.value[i], modeTarget.fog[i]);
+      u.areaSketch.value[i] = toward(u.areaSketch.value[i], modeTarget.sketch[i]);
+      u.areaTintA.value[i] = toward(u.areaTintA.value[i], modeTarget.tintA[i]);
+    }
+    u.groundFog.value = toward(u.groundFog.value, modeTarget.groundFog);
+    u.groundSketch.value = toward(u.groundSketch.value, modeTarget.groundSketch);
+  }
+
   setSites(initialSites);
   setState(initialState);
 
@@ -1826,6 +1996,7 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     }
     for (const e of effects) if (!e.update(dt)) (e.remove(), effects.delete(e));
     fx.tick(dt);
+    stepMode(dt);
     flickerLights(time.value);
     smoke?.update(dt);
     for (const o of sites.values()) o.sprite.update(dt);
