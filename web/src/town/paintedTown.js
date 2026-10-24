@@ -559,7 +559,8 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
         // art pipeline, else the middle 80 %).
         const walk = this.name?.endsWith("_walk");
         const [a, b] = this.meta.loop_range ?? (walk ? [Math.round(this.meta.frames * 0.1), Math.round(this.meta.frames * 0.9)] : [0, this.meta.frames]);
-        this.frame(a + (Math.floor(this.t * this.meta.fps) % (b - a)));
+        this.cur = a + (Math.floor(this.t * this.meta.fps) % (b - a));
+        this.frame(this.cur);
       }
       const p = this.mesh.position;
       this.mesh.rotation.y = Math.atan2(camera.position.x - p.x, camera.position.z - p.z);
@@ -894,6 +895,12 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
   const COLORS = { hero: "#ff9a3c", mage: "#b56cff", priest: "#3fe0c8" };
   // Which clip plays for an action: the pack's sprite named <character>_<verb> when it has one
   // (art batches plug in by name), else the idle clips.
+  // Blows on the anvil (art batch A, 2026-10-24): frames where the hammer lands, and the hit
+  // point as fractions of the cell (x from the left, y from the bottom).
+  const HITS = {
+    mage_hammer: { frames: [14, 26, 38], at: [0.43, 0.3] },
+    priest_hammer: { frames: [11, 31], at: [0.34, 0.29] },
+  };
   const VERB = { write: "hammer", read: "read", blocked: "bump", cast: "cast", search: "search", walk: "walk" };
   const clipFor = (character, action) => {
     const name = VERB[action] && `${character}_${VERB[action]}`;
@@ -1042,7 +1049,16 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
         this.alert.update(dt);
       }
       // the art draws no sparks (decided 2026-10-24): every hammering clip gets the code's sparks
-      const hammering = !walking && !!this.sprite.name?.endsWith("_hammer");
+      // Clips with known hit frames throw a burst of sparks at each blow, from where the hammer
+      // meets the anvil; the others spray all the time.
+      const hit = !walking ? HITS[this.sprite.name] : null;
+      if (hit && this.sprite.meta) {
+        const f = this.sprite.cur;
+        if (f !== this.lastFrame && hit.frames.includes(f)) this.strike(hit);
+        this.lastFrame = f;
+      }
+      this.burst?.update(dt);
+      const hammering = !walking && !hit && !!this.sprite.name?.endsWith("_hammer");
       if (hammering && !this.sparks) this.sparks = new Sparks(new THREE.Color(1, 0.65, 0.2), this.h);
       else if (!hammering && this.sparks) {
         this.sparks.remove();
@@ -1053,6 +1069,25 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
         this.sparks.update(dt);
       }
       this.updateEvents();
+    }
+    // One blow on the anvil: sparks fly up and out from the hit point of the clip's frame.
+    strike(hit) {
+      const meta = this.sprite.meta;
+      const H = (this.h * meta.cell[1]) / meta.char_h;
+      const W = (H * meta.cell[0]) / meta.cell[1];
+      camRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
+      const at = this.pos.clone()
+        .addScaledVector(camRight, (hit.at[0] - meta.pivot[0]) * W)
+        .add(new THREE.Vector3(0, (hit.at[1] - meta.pivot[1]) * H, 0))
+        .addScaledVector(toCam.copy(camera.position).sub(this.pos).normalize(), 0.3);
+      this.burst ??= new Particles(90, this.h * 0.03, { gravity: this.h * 3, drag: 0.6 });
+      const hot = new THREE.Color(1, 0.65, 0.2).multiplyScalar(night ? 6 : 4);
+      for (let k = 0; k < 28; k++) {
+        const a = rand(0, Math.PI * 2);
+        const up = rand(0.4, 1);
+        const sp = this.h * rand(0.6, 1.5);
+        this.burst.emit(at, Math.cos(a) * sp * 0.7, up * sp, Math.sin(a) * sp * 0.4, hot, rand(0.25, 0.55));
+      }
     }
     // Effects tied to the times in the agent's state (townState.js): circle, fireworks, search flashes.
     updateEvents() {
@@ -1131,6 +1166,7 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       this.sprite.remove();
       this.alert?.remove();
       this.sparks?.remove();
+      this.burst?.remove();
     }
   }
 
