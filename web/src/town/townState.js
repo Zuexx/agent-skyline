@@ -108,9 +108,17 @@ function testResults(feed, buildingIds, where) {
  * - conflicts: [{ building, at }], two agents writing the same file, newest first.
  * `agentSeq` numbers agents by first appearance (1-based); `buildingIds` are the pack's buildings;
  * `nowMs` the clock; `prompts`: agent key -> { at: ms } of its latest prompt (a prompt after a Stop
- * ends the wait).
+ * ends the wait); `warnings`: the page's scope warnings (lib/scope.js, Map key -> { rule, agent,
+ * ts }) — each agent's `warnAt` is its newest write that looked out of place (conflicts have their
+ * own sparks and do not count).
  */
-export function townState(activity, agentSeq, buildingIds, nowMs, prompts = {}) {
+export function townState(activity, agentSeq, buildingIds, nowMs, prompts = {}, warnings = null) {
+  const warnAt = new Map();
+  for (const w of warnings?.values?.() ?? []) {
+    if (w.rule === "conflict") continue;
+    const t = Date.parse(w.ts ?? "");
+    if (!Number.isNaN(t) && t > (warnAt.get(w.agent) ?? 0)) warnAt.set(w.agent, t);
+  }
   const evs = agentEvents(activity?.feed);
   const keys = new Set(Object.keys(activity?.agents ?? {}));
   for (const k of evs.keys()) keys.add(k);
@@ -148,6 +156,7 @@ export function townState(activity, agentSeq, buildingIds, nowMs, prompts = {}) 
       cast: tsOf(e?.cast),
       search: e?.search ? { at: tsOf(e.search), buildings: searchedBuildings(e.search.paths?.[0], buildingIds) } : null,
       cheer: latest?.kind === "stop" && e.wrote ? tsOf(latest) : null,
+      warnAt: warnAt.get(key) ?? null,
     });
   }
   const recent = new Set();
@@ -176,11 +185,19 @@ export const BIG_CHANGE = 10;
  * level, locked, scope } }, only for buildings with something to show. changes: files with
  * uncommitted changes (`working`, the Map path -> change from /api/working); level 0-3 for the
  * scaffold (none / 1-2 files / 3-9 / BIG_CHANGE or more); locked: the whole folder is in a locked
- * zone (`locked` globs); scope: the folder is inside the declared task scope (`allow` globs).
+ * zone (`locked` globs); scope: the folder is inside the declared task scope (`allow` globs);
+ * warn: files written there that looked out of place (`warnings`, lib/scope.js) and are not yet
+ * ticked off in the review (`reviewed`, a Set of paths).
  */
-export function houseStates(buildingIds, { working = null, locked = [], allow = [] } = {}) {
+export function houseStates(buildingIds, { working = null, locked = [], allow = [], warnings = null, reviewed = null } = {}) {
   const out = {};
-  const at = (id) => (out[id] ??= { changes: 0, level: 0, locked: false, scope: false });
+  const at = (id) => (out[id] ??= { changes: 0, level: 0, locked: false, scope: false, warn: 0 });
+  const warned = new Set();
+  for (const w of warnings?.values?.() ?? []) if (w.rule !== "conflict" && !reviewed?.has(w.path)) warned.add(w.path);
+  for (const p of warned) {
+    const b = buildingOf(p, buildingIds);
+    if (b) at(b).warn++;
+  }
   for (const p of working?.keys?.() ?? []) {
     const b = buildingOf(p, buildingIds);
     if (b) at(b).changes++;
@@ -193,4 +210,16 @@ export function houseStates(buildingIds, { working = null, locked = [], allow = 
   }
   for (const h of Object.values(out)) h.level = h.changes === 0 ? 0 : h.changes < 3 ? 1 : h.changes < BIG_CHANGE ? 2 : 3;
   return out;
+}
+
+// Spec 09 §4: what shows when one building has several states. Higher comes first; at most
+// MAX_SHOWN show as effects, the rest fold into chips on the sign. The locked barrier is not in
+// this list: it always shows.
+export const EFFECT_ORDER = ["blocked", "failed", "scaffold", "warn", "scope"];
+export const MAX_SHOWN = 2;
+
+/** { show: kinds drawn as effects, folded: kinds shown as chips } for one building's `kinds`. */
+export function prioritize(kinds) {
+  const sorted = [...new Set(kinds)].filter((k) => EFFECT_ORDER.includes(k)).sort((a, b) => EFFECT_ORDER.indexOf(a) - EFFECT_ORDER.indexOf(b));
+  return { show: sorted.slice(0, MAX_SHOWN), folded: sorted.slice(MAX_SHOWN) };
 }

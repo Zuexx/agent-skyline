@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildingOf, houseStates, searchedBuildings, townState, ACTIVE_MS, GONE_MS, RECENT_MS, SUB_GONE_MS } from "./townState.js";
+import { buildingOf, houseStates, prioritize, searchedBuildings, townState, ACTIVE_MS, GONE_MS, RECENT_MS, SUB_GONE_MS } from "./townState.js";
 
 const IDS = ["(root)", "web/src/city", "web/src/lib", "web", "specs", "install"];
 const NOW = Date.parse("2026-10-23T12:00:00Z");
@@ -138,7 +138,7 @@ describe("houseStates", () => {
       ...Array.from({ length: 10 }, (_, i) => [`web/src/lib/f${i}.js`, {}]),
     ]);
     const h = houseStates(IDS, { working });
-    expect(h.specs).toEqual({ changes: 3, level: 2, locked: false, scope: false });
+    expect(h.specs).toEqual({ changes: 3, level: 2, locked: false, scope: false, warn: 0 });
     expect(h.install.level).toBe(1);
     expect(h["web/src/lib"].level).toBe(3);
     expect(h.web).toBeUndefined();
@@ -179,5 +179,29 @@ describe("subagents", () => {
     const feed = [main("read", 1000, { paths: ["specs/a.md"] }), sub("read", SUB_GONE_MS + 1, { paths: ["specs/b.md"] })];
     const s = townState({ agents: {}, files: {}, feed }, { main: 1, sub1: 2 }, IDS, NOW);
     expect(s.agents.map((a) => a.key)).toEqual(["main"]);
+  });
+});
+
+describe("out-of-scope writes", () => {
+  const warnings = new Map([
+    ["k1", { rule: "outOfScope", path: "specs/a.md", agent: "a", ts: ago(3000) }],
+    ["k2", { rule: "newArea", path: "specs/b.md", agent: "a", ts: ago(1000) }],
+    ["k3", { rule: "conflict", path: "install/x.sh", agent: "a", ts: ago(500) }],
+  ]);
+  it("tell each agent when it last wrote out of place", () => {
+    const s = townState({ agents: { a: { path: "specs/b.md", ts: ago(1000), kind: "write" } }, files: {} }, { a: 1 }, IDS, NOW, {}, warnings);
+    expect(s.agents[0].warnAt).toBe(NOW - 1000);
+  });
+  it("flag a building until its files are reviewed", () => {
+    expect(houseStates(IDS, { warnings }).specs.warn).toBe(2);
+    expect(houseStates(IDS, { warnings, reviewed: new Set(["specs/a.md"]) }).specs.warn).toBe(1);
+    expect(houseStates(IDS, { warnings }).install).toBeUndefined();
+  });
+});
+
+describe("prioritize", () => {
+  it("shows the two most important states and folds the rest", () => {
+    expect(prioritize(["scope", "warn", "scaffold", "failed"])).toEqual({ show: ["failed", "scaffold"], folded: ["warn", "scope"] });
+    expect(prioritize(["scope"])).toEqual({ show: ["scope"], folded: [] });
   });
 });

@@ -3,6 +3,7 @@ import { createPaintedTown } from "./paintedTown.js";
 import { houseStates, townState } from "./townState.js";
 import { buildingOf, townBuildings } from "./townLayout.js";
 import { useNow } from "../lib/useNow.js";
+import { t } from "../lib/i18n.js";
 
 /**
  * The painted town (pack renderer "painted", specs/09–10) in place of the 3D city: fills its
@@ -13,9 +14,10 @@ import { useNow } from "../lib/useNow.js";
  * prompt, shown in a bubble for a moment). Clicking a building calls onPickFolder(id, files)
  * (null on open ground); `folder` is the building whose sign is marked. `working` (Map path ->
  * uncommitted change), `locked` (zone globs) and `scopeAllow` (task scope globs) set what stands on
- * the houses (scaffolds, barriers, scope rings).
+ * the houses (scaffolds, barriers, scope rings); `warnings` (lib/scope.js) and `reviewed` (Set of
+ * paths ticked off in the review) raise and lower the out-of-scope marks.
  */
-export default function PaintedTownView({ pack, variant, activity, agentSeq, paths = [], view = "pano", names = {}, prompts = {}, rootName = "", folder = null, onPickFolder, working = null, locked = [], scopeAllow = [] }) {
+export default function PaintedTownView({ pack, variant, activity, agentSeq, paths = [], view = "pano", names = {}, prompts = {}, rootName = "", folder = null, onPickFolder, working = null, locked = [], scopeAllow = [], warnings = null, reviewed = null }) {
   const box = useRef(null);
   const renderer = useRef(null);
   const [error, setError] = useState(null);
@@ -25,15 +27,17 @@ export default function PaintedTownView({ pack, variant, activity, agentSeq, pat
   const buildingIds = useMemo(() => town.filter((b) => b.painted || b.lot).map((b) => b.id), [town]);
   const sites = useMemo(() => town.filter((b) => !b.painted && b.lot).map((b) => ({ id: b.id, lot: b.lot })), [town]);
   const state = useMemo(() => {
-    const s = townState(activity, agentSeq, buildingIds, now, prompts);
-    const houses = houseStates(buildingIds, { working, locked, allow: scopeAllow });
-    return { ...s, houses, agents: s.agents.map((a) => ({
+    const s = townState(activity, agentSeq, buildingIds, now, prompts, warnings);
+    const houses = houseStates(buildingIds, { working, locked, allow: scopeAllow, warnings, reviewed });
+    const labels = Object.fromEntries(["blocked", "failed", "scaffold", "warn", "scope"].map((k) => [k, t(`town.chip.${k}`)]));
+    labels.warnHint = (n) => t("town.chip.warnHint", { n });
+    return { ...s, houses, labels, agents: s.agents.map((a) => ({
       ...a,
       // a subagent's name tag says whose helper it is (lib/sessions.js); prompts go to the main agent
       name: names[a.key] ?? null,
       prompt: a.parent ? null : (prompts[a.key] ?? null),
     })) };
-  }, [activity, agentSeq, buildingIds, now, names, prompts, working, locked, scopeAllow]);
+  }, [activity, agentSeq, buildingIds, now, names, prompts, working, locked, scopeAllow, warnings, reviewed]);
   const stateRef = useRef(state);
   stateRef.current = state;
   const folderRef = useRef(folder);

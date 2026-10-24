@@ -9,6 +9,7 @@ import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js"
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { layoutToPixel } from "./townLayout.js";
 import { findPath, invert3, makeGrid } from "./townPaths.js";
+import { prioritize } from "./townState.js";
 
 
 /**
@@ -838,6 +839,7 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       { fade: { value: 0 }, day: { value: night ? 0 : 1 }, tint: { value: color.clone() } },
     );
   const CAST_S = 2.5; // the circle shows this long after each command
+  const WARN_SHOW_MS = 8000; // the "？" over an agent after an out-of-scope write
   const CHEER_FRESH_MS = 4000; // a Stop older than this when it arrives gets no fireworks (replays, page loads)
   const FOOT_LIFE = 3.5; // seconds a footprint glows
   const footGeo = new THREE.PlaneGeometry(1, FOOT_ASPECT * 1.3);
@@ -1025,6 +1027,8 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
         if (e) effects.add(e);
       }
       this.tag.zzz.style.display = this.state.action === "wait" && !this.path.length ? "block" : "none";
+      const huh = this.state.warnAt != null && nowMs - this.state.warnAt < WARN_SHOW_MS;
+      if ((this.tag.huh.style.display === "block") !== huh) this.tag.huh.style.display = huh ? "block" : "none";
     }
     // Glowing footprints in the agent's colour, left and right, fading after a few seconds.
     dropPrints(moved) {
@@ -1351,9 +1355,12 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     });
     const post = document.createElement("div");
     Object.assign(post.style, { width: "3px", height: "9px", background: "#3d2614", boxShadow: "0 1px 2px rgba(0,0,0,0.5)" });
-    el.append(board, post);
+    // chips over the board: states folded away by the two-effect limit, and the out-of-scope mark
+    const chips = document.createElement("div");
+    Object.assign(chips.style, { display: "flex", gap: "3px", marginBottom: "2px" });
+    el.append(chips, board, post);
     tagLayer.appendChild(el);
-    const sign = { el, board, at: at.clone(), remove: () => el.remove() };
+    const sign = { el, board, chips, chipKey: "", at: at.clone(), remove: () => el.remove() };
     styleSign(id, sign);
     return sign;
   }
@@ -1362,6 +1369,33 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     s.board.style.outline = on ? "2px solid #ffd75e" : "none";
     s.board.style.outlineOffset = "1px";
     s.el.style.zIndex = on ? "2" : "1";
+  }
+  const CHIP_COLORS = { blocked: "#ff6b6b", failed: "#ff8a4c", scaffold: "#ffc266", warn: "#ffd23f", scope: "#86f5a4" };
+  /** Chips on a building's sign: [{ text, kind, title? }]; redrawn only when they change. */
+  function setChips(id, list) {
+    const sign = signs.get(id);
+    if (!sign) return;
+    const key = JSON.stringify(list);
+    if (key === sign.chipKey) return;
+    sign.chipKey = key;
+    sign.chips.replaceChildren(
+      ...list.map((c) => {
+        const el = document.createElement("div");
+        el.textContent = c.text;
+        if (c.title) el.title = c.title;
+        const color = CHIP_COLORS[c.kind] ?? "#fff";
+        Object.assign(el.style, {
+          padding: c.big ? "0 5px" : "0 4px",
+          borderRadius: "3px",
+          background: "rgba(12,14,30,0.85)",
+          border: `1.5px solid ${color}`,
+          color,
+          font: c.big ? "400 18px/1.1 'Fusion Pixel 12', 'Segoe UI', sans-serif" : TAG_FONT,
+          whiteSpace: "nowrap",
+        });
+        return el;
+      }),
+    );
   }
   function setSelected(id) {
     selectedId = id ?? null;
@@ -1412,9 +1446,18 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       zzz.appendChild(s);
     }
     Object.assign(zzz.style, { display: "none", height: "26px", width: "40px", position: "relative", color: "#dfe8ff", font: TAG_FONT, textShadow: "0 1px 0 #10142a, 0 0 4px #10142a" });
-    el.append(bubble, zzz, name);
+    // wrote somewhere that looked out of place: a yellow "？" (spec 09 §3.2)
+    const huh = document.createElement("div");
+    huh.textContent = "?";
+    Object.assign(huh.style, {
+      display: "none",
+      color: "#ffd23f",
+      font: "400 36px/1 'Fusion Pixel 12', 'Segoe UI', sans-serif", // 3x the pixel font: whole pixels
+      textShadow: "2px 0 #3a2a00, -2px 0 #3a2a00, 0 2px #3a2a00, 0 -2px #3a2a00, 0 0 8px rgba(255,210,63,0.6)",
+    });
+    el.append(bubble, zzz, huh, name);
     tagLayer.appendChild(el);
-    return { el, bubble, zzz, name, said: null, remove: () => el.remove() };
+    return { el, bubble, zzz, huh, name, said: null, remove: () => el.remove() };
   }
   const BUBBLE_MS = 6000; // how long a new prompt shows over the agent's head
   const BUBBLE_CHARS = 20; // spec 09 §3.2: the first 20 characters
@@ -1559,14 +1602,39 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     // where an agent was just stopped; scaffolds as high as the uncommitted changes go (at least
     // the lowest while an agent writes there); rings on the folders of the declared task scope.
     const houses = live.houses ?? {};
-    const blocked = new Set(live.agents.filter((a) => a.action === "blocked").map((a) => a.building));
-    for (const [id, h] of Object.entries(houses)) if (h.locked) blocked.add(id);
-    const scaffold = new Map(Object.entries(houses).filter(([, h]) => h.level > 0).map(([id, h]) => [id, h.level]));
-    for (const a of live.agents) if (a.action === "write" && !scaffold.has(a.building)) scaffold.set(a.building, 1);
-    const scoped = new Set(Object.keys(houses).filter((id) => houses[id].scope));
+    const tests = live.tests ?? {};
+    const stopped = new Set(live.agents.filter((a) => a.action === "blocked").map((a) => a.building));
+    const scaffoldAll = new Map(Object.entries(houses).filter(([, h]) => h.level > 0).map(([id, h]) => [id, h.level]));
+    for (const a of live.agents) if (a.action === "write" && !scaffoldAll.has(a.building)) scaffoldAll.set(a.building, 1);
+    // At most two effects per building, the most important first (spec 09 §4); the rest become
+    // chips on its sign. The barrier of a locked folder always shows and does not count.
+    const blocked = new Set();
+    const scaffold = new Map();
+    const scoped = new Set();
+    const shownTests = {};
+    for (const id of buildings.keys()) {
+      const h = houses[id];
+      const kinds = [];
+      if (stopped.has(id) && !h?.locked) kinds.push("blocked");
+      if (tests[id]?.outcome === "failed") kinds.push("failed");
+      if (scaffoldAll.has(id)) kinds.push("scaffold");
+      if (h?.warn) kinds.push("warn");
+      if (h?.scope) kinds.push("scope");
+      const { show, folded } = prioritize(kinds);
+      if (h?.locked || show.includes("blocked")) blocked.add(id);
+      if (show.includes("scaffold")) scaffold.set(id, scaffoldAll.get(id));
+      if (show.includes("scope")) scoped.add(id);
+      if (tests[id] && (tests[id].outcome !== "failed" || show.includes("failed"))) shownTests[id] = tests[id];
+      const L = live.labels ?? {};
+      const chips = [];
+      // the yellow flag's stand-in until its art arrives: "？" and how many files are unreviewed
+      if (show.includes("warn")) chips.push({ kind: "warn", text: `？${h.warn}`, big: true, title: L.warnHint?.(h.warn) });
+      for (const k of folded) chips.push({ kind: k, text: k === "warn" ? `${L.warn ?? "?"} ${h.warn}` : (L[k] ?? k), title: k === "warn" ? L.warnHint?.(h.warn) : undefined });
+      setChips(id, chips);
+    }
     const lit = new Set(windowsOn ? V.buildings.filter((b, i) => winLevels[i] >= SPILL_MIN).map((b) => b.id) : []);
     fx.update(blocked, scaffold, lit, scoped);
-    fx.updateTests(live.tests);
+    fx.updateTests(shownTests);
     fx.updateConflicts(live.conflicts);
     reliefMat.uniforms.readEnergy.value = live.agents.some((a) => a.action === "read") ? (night ? 2.2 : 1.4) : 0;
   }

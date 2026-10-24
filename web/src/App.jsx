@@ -58,6 +58,7 @@ import { rankReview, reviewItems } from "./lib/risk.js";
 import { fetchWorkingDiff, useWorking } from "./lib/useWorking.js";
 import { fetchFileDiff } from "./lib/useCompare.js";
 import ReviewPanel from "./ui/ReviewPanel.jsx";
+import { useReviewed } from "./lib/useReviewed.js";
 import TaskPanel from "./ui/TaskPanel.jsx";
 import LabelLayer from "./ui/LabelLayer.jsx";
 import { createLabelBus } from "./city/DistrictLabels.jsx";
@@ -451,6 +452,8 @@ export default function App() {
     () => new Map([...computeWarnings(activity.feed, { declared: scope.allow, known: liveIndex }), ...conflicts]),
     [activity.feed, scope.allow, liveIndex, conflicts]
   );
+  // files ticked off in the live review: the town takes their warning flags down
+  const reviewedLive = useReviewed("live").done;
   const warnPaths = useMemo(() => new Set([...warnings.values()].map((w) => w.path)), [warnings]);
   // Alerts come from the live stream of every agent: neither a replay nor the agent filter mutes them.
   const alertWarnings = useMemo(
@@ -692,6 +695,8 @@ export default function App() {
             prompts={townPrompts}
             rootName={repoName}
             working={working}
+            warnings={warnings}
+            reviewed={reviewedLive}
             locked={zones.locked}
             scopeAllow={scope.allow}
             folder={townFolder?.id ?? null}

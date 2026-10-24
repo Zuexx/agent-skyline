@@ -1,33 +1,7 @@
-import { useEffect, useState } from "react";
 import { theme } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { splitPath } from "../lib/activity.js";
-
-// Remember which files were already looked at, per comparison (or per live session). Browser
-// storage is a convenience only: if it is unavailable, the checkmarks simply do not persist.
-function useReviewed(scopeKey) {
-  const storageKey = `agent-skyline.reviewed.${scopeKey}`;
-  const [done, setDone] = useState(() => new Set());
-  useEffect(() => {
-    try {
-      setDone(new Set(JSON.parse(localStorage.getItem(storageKey) ?? "[]")));
-    } catch {
-      setDone(new Set());
-    }
-  }, [storageKey]);
-  const toggle = (path) =>
-    setDone((prev) => {
-      const next = new Set(prev);
-      next.has(path) ? next.delete(path) : next.add(path);
-      try {
-        localStorage.setItem(storageKey, JSON.stringify([...next]));
-      } catch {
-        // storage blocked: keep the checkmark for this page only
-      }
-      return next;
-    });
-  return { done, toggle };
-}
+import { useReviewed } from "../lib/useReviewed.js";
 
 const reasonColor = (key) =>
   ({ warning: theme.warn, deletedUsed: theme.deleted, untested: theme.blocked, churn: theme.written, usedBy: theme.depUsedBy }[key] ??
