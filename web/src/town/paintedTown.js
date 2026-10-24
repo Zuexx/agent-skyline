@@ -854,19 +854,34 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
   const SLOT = { hero: [17, 50], mage: [75, -20], priest: [-40, 45] };
   const BLOCKED_SLOT = [-160, 29];
 
-  function doorSpot(buildingId, character, action) {
+  // A subagent stands beside its main agent's spot, a little in front; several side by side.
+  const SUB_SCALE = 0.62;
+  const subOffset = (i) => [34 + 24 * i, 14];
+  function doorSpot(buildingId, character, action, extra = [0, 0]) {
     const b = buildings.get(buildingId) ?? buildings.get("(root)");
     const [dx, dy] = action === "blocked" ? BLOCKED_SLOT : SLOT[character] ?? [0, 50];
-    return groundAt(b.pixel[0] + dx, b.pixel[1] + dy) ?? b.pos.clone();
+    return groundAt(b.pixel[0] + dx + extra[0], b.pixel[1] + dy + extra[1]) ?? b.pos.clone();
+  }
+  /** Where agent state `a` stands. An idle subagent waits beside its main agent. */
+  function spotOf(a) {
+    if (!a.parent) return doorSpot(a.building, a.character, a.action);
+    const [ox, oy] = subOffset(a.subIndex ?? 0);
+    const main = agents.get(a.parent);
+    if ((a.action === "idle" || a.action === "wait") && main) {
+      const [px, py] = pixelOf(main.target);
+      return groundAt(px + ox, py + oy) ?? main.target.clone();
+    }
+    return doorSpot(a.building, a.character, a.action, [ox, oy]);
   }
 
   class Agent {
     constructor(a) {
       this.key = a.key;
       this.character = a.character;
-      this.h = CHAR_H * (big ? BIG : 1);
+      this.sub = !!a.parent; // a subagent: the main agent's character, smaller (spec 09 §3.1)
+      this.h = CHAR_H * (big ? BIG : 1) * (this.sub ? SUB_SCALE : 1);
       this.color = new THREE.Color(COLORS[a.character] ?? "#ffffff");
-      this.pos = doorSpot(a.building, a.character, a.action);
+      this.pos = spotOf(a);
       this.target = this.pos.clone();
       this.path = [];
       this.sprite = new Sprite(this.h);
@@ -909,7 +924,7 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     }
     sync(a) {
       this.state = a;
-      const target = doorSpot(a.building, a.character, a.action);
+      const target = spotOf(a);
       if (target.distanceTo(this.target) < 0.05) return;
       this.target = target;
       this.path = routeBetween(this.pos, target);
@@ -1519,7 +1534,17 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
   function setState(next) {
     live = next ?? { agents: [], recent: [] };
     const seen = new Set();
-    for (const a of live.agents) {
+    // main agents first, so a subagent can stand beside where its main agent is going; siblings
+    // numbered for their places side by side
+    const siblings = new Map();
+    const ordered = live.agents.map((a) => ({ ...a })).sort((x, y) => (x.parent ? 1 : 0) - (y.parent ? 1 : 0));
+    for (const a of ordered) {
+      if (!a.parent) continue;
+      const n = siblings.get(a.parent) ?? 0;
+      siblings.set(a.parent, n + 1);
+      a.subIndex = n;
+    }
+    for (const a of ordered) {
       if (a.action === "idle" && !agents.has(a.key)) continue;
       seen.add(a.key);
       if (!agents.has(a.key)) agents.set(a.key, new Agent(a));

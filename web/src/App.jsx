@@ -51,7 +51,7 @@ import { buildingTransform, HEIGHT_SCALE } from "./lib/geometry.js";
 import { buildView } from "./lib/views.js";
 import { pathIndex, pathsInCommand } from "./lib/commandPaths.js";
 import { vscodeUrl } from "./lib/editor.js";
-import { agentsIn, inRange, rangeFor, segmentSessions } from "./lib/sessions.js";
+import { agentLabels, agentsIn, inRange, rangeFor, segmentSessions } from "./lib/sessions.js";
 import { computeConflicts } from "./lib/conflicts.js";
 import { depsOf, useDeps } from "./lib/deps.js";
 import { rankReview, reviewItems } from "./lib/risk.js";
@@ -306,6 +306,12 @@ export default function App() {
     [eventsVersion, range.since, range.until]
   );
   const agentSeq = useMemo(() => Object.fromEntries(agents.map((a) => [a.key, a.n])), [agents]);
+  // "Claude 1", "Claude 1 的跟班": one name per agent for the feed, alerts and the town
+  const agentNames = useMemo(
+    () => agentLabels(agents, t),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [agents, prefs.locale]
+  );
   useEffect(() => {
     if (agentSel != null && agents.length && !agents.some((a) => a.key === agentSel)) setAgentSel(null);
   }, [agents, agentSel]);
@@ -458,11 +464,7 @@ export default function App() {
   const tasks = useMemo(() => buildTasks(allFeed), [allFeed]);
   const latestTasks = useMemo(() => latestByAgent(tasks), [tasks]);
   // The painted town's name tags and prompt bubbles.
-  const townNames = useMemo(
-    () => Object.fromEntries(agents.map((a) => [a.key, a.source === "watcher" ? t("source.watcher") : `${t(`source.${a.source}`).startsWith("source.") ? a.source : t(`source.${a.source}`)} ${a.n}`])),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [agents, prefs.locale]
-  );
+  const townNames = agentNames;
   const townPrompts = useMemo(() => {
     const out = {};
     for (const [key, task] of latestTasks) if (task.prompt) out[key] = { text: task.prompt, at: task.start };
@@ -545,6 +547,7 @@ export default function App() {
     return rankReview(items, { churn, deps: depIndex, warned: compare.active ? new Set() : warned });
   }, [compare.active, compare.diff, activity.files, churn, depIndex, warnPaths, working]);
   const agentName = (a) => {
+    if (agentNames[a.agent]) return agentNames[a.agent];
     if (a.source === "watcher") return t("source.watcher");
     const name = t(`source.${a.source}`);
     return `${name.startsWith("source.") ? a.source : name} ${agentSeq[a.agent] ?? ""}`.trim();
@@ -887,7 +890,7 @@ export default function App() {
       <WorkList
         tab={listTab}
         onTab={setListTab}
-        feedProps={{ feed: activity.feed, agentSeq, warnings, onFocusPath: (p) => focusOn(indexByPath.get(p)) }}
+        feedProps={{ feed: activity.feed, agentSeq, agentNames, warnings, onFocusPath: (p) => focusOn(indexByPath.get(p)) }}
         tasks={latestTasks}
         files={touchedFiles}
         issues={issues}

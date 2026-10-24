@@ -27,7 +27,12 @@ export default function PaintedTownView({ pack, variant, activity, agentSeq, pat
   const state = useMemo(() => {
     const s = townState(activity, agentSeq, buildingIds, now, prompts);
     const houses = houseStates(buildingIds, { working, locked, allow: scopeAllow });
-    return { ...s, houses, agents: s.agents.map((a) => ({ ...a, name: names[a.key] ?? null, prompt: prompts[a.key] ?? null })) };
+    return { ...s, houses, agents: s.agents.map((a) => ({
+      ...a,
+      // a subagent's name tag says whose helper it is (lib/sessions.js); prompts go to the main agent
+      name: names[a.key] ?? null,
+      prompt: a.parent ? null : (prompts[a.key] ?? null),
+    })) };
   }, [activity, agentSeq, buildingIds, now, names, prompts, working, locked, scopeAllow]);
   const stateRef = useRef(state);
   stateRef.current = state;

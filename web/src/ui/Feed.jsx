@@ -28,7 +28,8 @@ const rowKey = (ev) => `${ev.ts}|${ev.session}|${ev.kind}|${ev.paths?.[0] ?? ""}
 // - A file row flies the camera to that building and selects it.
 // - A command row expands to the full command and the files it read, each clickable.
 // `agentSeq` numbers agents per source (see activity.js); the watcher is one unnumbered source.
-function agentLabel(ev, agentSeq) {
+function agentLabel(ev, agentSeq, agentNames) {
+  if (agentNames?.[agentKeyOf(ev)]) return agentNames[agentKeyOf(ev)];
   const source = sourceOf(ev);
   if (source === "watcher") return t("source.watcher");
   const name = t(`source.${source}`);
@@ -36,7 +37,7 @@ function agentLabel(ev, agentSeq) {
 }
 
 // `embedded`: drawn inside another panel (WorkList) instead of as its own floating panel.
-export default function Feed({ feed, agentSeq = {}, warnings = null, onFocusPath, embedded = false }) {
+export default function Feed({ feed, agentSeq = {}, agentNames = null, warnings = null, onFocusPath, embedded = false }) {
   const [filter, setFilter] = useState("all");
   const [open, setOpen] = useState(null); // key of the expanded command row
   const [now, setNow] = useState(Date.now());
@@ -166,7 +167,7 @@ export default function Feed({ feed, agentSeq = {}, warnings = null, onFocusPath
               key={rowKey(ev) + i}
               ev={ev}
               now={now}
-              agentLabel={agentLabel(ev, agentSeq)}
+              agentLabel={agentLabel(ev, agentSeq, agentNames)}
               warning={warningOf(ev, warnings)}
               open={open === rowKey(ev)}
               rowId={rowKey(ev)}

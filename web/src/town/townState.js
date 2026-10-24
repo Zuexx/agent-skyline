@@ -9,6 +9,8 @@ export const ACTIVE_MS = 3 * 60_000; // an agent with no event for this long goe
 export const GONE_MS = 10 * 60_000; // ...and after this long it leaves the town (spec 09 §3.2)
 export const RECENT_MS = 30 * 60_000; // a building written to within this window is "recent"
 export const CONFLICT_SHOW_MS = 5000; // how long the sparks of a conflict show (spec 09 §3.2)
+// A subagent lives for one job: this long after its last event it has handed back and leaves.
+export const SUB_GONE_MS = 90_000;
 
 const ACTIONS = { write: "write", read: "read", blocked: "blocked" };
 // Folders whose name says they hold the tests: where test results show when the command names none.
@@ -61,7 +63,9 @@ function agentEvents(feed) {
     if ((ev.source ?? "claude-code") === "watcher") continue;
     const key = keyOf(ev);
     let e = out.get(key);
-    if (!e) out.set(key, (e = { latest: ev, cast: null, search: null, stopOpen: ev.kind === "stop", wrote: false }));
+    // a subagent's events carry its own id and its main agent's session (lib/normalize.mjs)
+    const parent = ev.agent && ev.session && ev.session !== ev.agent ? ev.session : null;
+    if (!e) out.set(key, (e = { latest: ev, parent, cast: null, search: null, stopOpen: ev.kind === "stop", wrote: false }));
     else if (e.stopOpen) {
       // older than the newest Stop: the turn it ended runs back to the Stop before it
       if (ev.kind === "stop") e.stopOpen = false;
@@ -92,7 +96,9 @@ function testResults(feed, buildingIds, where) {
 
 /**
  * { agents, recent, tests, conflicts } for `activity` (lib/activity.js state):
- * - agents: [{ key, character, building, action, at, cast, search, cheer }]. action is write / read /
+ * - agents: [{ key, character, building, action, at, cast, search, cheer, parent }]. parent: for a
+ *   subagent, its main agent's key (it takes that agent's character, spec 09 §3.1), else null.
+ *   Only main agents count for the character order. action is write / read /
  *   blocked / cast (a shell command) / search / wait (stopped, waiting for the person) / idle. at is
  *   the agent's newest event (ms); cast: ms of its newest command; search: { at, buildings } of its
  *   newest search; cheer: ms of a Stop that ended a turn with writes. The renderer decides from these
@@ -110,6 +116,11 @@ export function townState(activity, agentSeq, buildingIds, nowMs, prompts = {}) 
   for (const k of evs.keys()) keys.add(k);
   const agents = [];
   const where = new Map();
+  // Characters follow the page's numbering (lib/sessions.js agentsIn), which numbers main agents
+  // only: a subagent has its main agent's number. Without one, the order here stands in.
+  const parentOf = (k) => evs.get(k)?.parent ?? null;
+  const fallback = new Map([...keys].filter((k) => !parentOf(k)).map((k, i) => [k, i + 1]));
+  const numberOf = (k) => agentSeq?.[k] ?? fallback.get(k) ?? 1;
   for (const key of keys) {
     const a = activity?.agents?.[key];
     if (a?.source === "watcher") continue; // changes no agent reported: no character (spec 09 §3.1)
@@ -117,7 +128,8 @@ export function townState(activity, agentSeq, buildingIds, nowMs, prompts = {}) 
     const building = buildingOf(a?.path, buildingIds) ?? "(root)";
     where.set(key, building);
     const at = Math.max(Date.parse(a?.ts ?? "") || 0, tsOf(e?.latest) ?? 0) || null;
-    if (at == null || nowMs - at > GONE_MS) continue;
+    const parent = parentOf(key);
+    if (at == null || nowMs - at > (parent ? SUB_GONE_MS : GONE_MS)) continue;
     let action = ACTIONS[a?.kind] ?? "idle";
     const latest = e?.latest;
     const prompted = (prompts?.[key]?.at ?? 0) > (tsOf(latest) ?? 0);
@@ -125,9 +137,10 @@ export function townState(activity, agentSeq, buildingIds, nowMs, prompts = {}) 
     else if (latest?.kind === "search") action = "search";
     else if (latest && latest === e.cast) action = "cast";
     if (action !== "wait" && nowMs - at > ACTIVE_MS) action = "idle";
-    const n = agentSeq?.[key] ?? agents.length + 1;
+    const n = numberOf(parent ?? key);
     agents.push({
       key,
+      parent,
       character: CHARACTERS[(n - 1) % CHARACTERS.length],
       building,
       action,

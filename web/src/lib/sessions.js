@@ -68,23 +68,52 @@ const agentKey = (ev) => ev?.agent ?? ev?.session ?? "unknown"; // same as activ
  * Agents seen in `events` within the time part of `range`, numbered per source in order of first
  * appearance — the same "Claude 1, pi 1" numbering the feed uses, but fixed by the time range so
  * it does not change when the view is narrowed to one agent: [{ key, source, n, count }].
+ * A subagent (its events carry the main agent's session) is not numbered on its own: it gets
+ * { parent, n: the main agent's n, sub: 1, 2, ... in order of appearance }. When its main agent is
+ * not in the range it is numbered like a main agent.
  */
 export function agentsIn(events, range) {
   const timeOnly = range ? { since: range.since, until: range.until } : null;
   const seen = new Map();
-  const perSource = new Map();
+  const parentOf = new Map();
   const sorted = (events ?? []).filter((ev) => inRange(ev, timeOnly)).sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts));
   for (const ev of sorted) {
     const key = agentKey(ev);
-    const source = ev.source ?? "claude-code";
-    if (!seen.has(key)) {
-      const n = (perSource.get(source) ?? 0) + 1;
-      perSource.set(source, n);
-      seen.set(key, { key, source, n, count: 0 });
-    }
+    if (!seen.has(key)) seen.set(key, { key, source: ev.source ?? "claude-code", count: 0 });
     seen.get(key).count++;
+    if (ev.agent && ev.session && ev.session !== ev.agent && !parentOf.has(key)) parentOf.set(key, ev.session);
   }
-  return [...seen.values()];
+  const perSource = new Map();
+  const subs = new Map();
+  const out = [];
+  for (const a of seen.values()) {
+    const parent = parentOf.get(a.key);
+    const main = parent ? seen.get(parent) : null;
+    if (main) {
+      const k = (subs.get(parent) ?? 0) + 1;
+      subs.set(parent, k);
+      out.push({ ...a, parent, sub: k }); // n filled in below: the main agent may come later
+    } else {
+      const n = (perSource.get(a.source) ?? 0) + 1;
+      perSource.set(a.source, n);
+      out.push({ key: a.key, source: a.source, n, count: a.count });
+    }
+  }
+  const nOf = new Map(out.filter((a) => !a.parent).map((a) => [a.key, a.n]));
+  return out.map((a) => (a.parent ? { key: a.key, source: a.source, n: nOf.get(a.parent), count: a.count, parent: a.parent, sub: a.sub } : a));
+}
+
+/**
+ * Display names for agentsIn() rows: "Claude 1", "pi 2", "檔案監看"; a subagent is named after its
+ * main agent ("Claude 1 的跟班"). `tr` is i18n's t. { [key]: name }.
+ */
+export function agentLabels(agents, tr) {
+  const base = (a) => {
+    if (a.source === "watcher") return tr("source.watcher");
+    const name = tr(`source.${a.source}`);
+    return `${name.startsWith("source.") ? a.source : name} ${a.n}`;
+  };
+  return Object.fromEntries((agents ?? []).map((a) => [a.key, a.parent ? tr("agent.helper", { name: base(a) }) : base(a)]));
 }
 
 /**

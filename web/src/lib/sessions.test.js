@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { agentsIn, GAP_MS, inRange, rangeFor, segmentSessions, startOfDay } from "./sessions.js";
+import { agentLabels, agentsIn, GAP_MS, inRange, rangeFor, segmentSessions, startOfDay } from "./sessions.js";
 
 const at = (iso, source) => ({ ts: iso, ...(source ? { source } : {}) });
 const events = [
@@ -67,6 +67,26 @@ describe("agents", () => {
       { key: "p-a", source: "pi", n: 1, count: 1 },
       { key: "c-b", source: "claude-code", n: 2, count: 1 },
     ]);
+  });
+
+  it("number subagents after their main agent, not on their own", () => {
+    const withSubs = [
+      { ts: "2026-10-09T12:00:00Z", session: "c-a" },
+      { ts: "2026-10-09T12:00:30Z", session: "c-a", agent: "sub-1" },
+      { ts: "2026-10-09T12:00:40Z", session: "c-a", agent: "sub-2" },
+      { ts: "2026-10-09T12:02:00Z", session: "c-b" },
+      { ts: "2026-10-09T12:03:00Z", session: "c-zz", agent: "sub-x" }, // main agent not in the log
+    ];
+    const list = agentsIn(withSubs, range);
+    expect(list).toEqual([
+      { key: "c-a", source: "claude-code", n: 1, count: 1 },
+      { key: "sub-1", source: "claude-code", n: 1, count: 1, parent: "c-a", sub: 1 },
+      { key: "sub-2", source: "claude-code", n: 1, count: 1, parent: "c-a", sub: 2 },
+      { key: "c-b", source: "claude-code", n: 2, count: 1 },
+      { key: "sub-x", source: "claude-code", n: 3, count: 1 },
+    ]);
+    const tr = (k, v = {}) => ({ "source.claude-code": "Claude", "agent.helper": `${v.name} 的跟班` })[k] ?? k;
+    expect(agentLabels(list, tr)).toMatchObject({ "c-a": "Claude 1", "sub-1": "Claude 1 的跟班", "c-b": "Claude 2" });
   });
 
   it("keep their numbers when the range is narrowed to one of them", () => {

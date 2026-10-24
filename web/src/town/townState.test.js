@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildingOf, houseStates, searchedBuildings, townState, ACTIVE_MS, GONE_MS, RECENT_MS } from "./townState.js";
+import { buildingOf, houseStates, searchedBuildings, townState, ACTIVE_MS, GONE_MS, RECENT_MS, SUB_GONE_MS } from "./townState.js";
 
 const IDS = ["(root)", "web/src/city", "web/src/lib", "web", "specs", "install"];
 const NOW = Date.parse("2026-10-23T12:00:00Z");
@@ -151,5 +151,33 @@ describe("houseStates", () => {
     expect(h.specs.scope).toBe(true);
     expect(h["(root)"]).toBeUndefined();
     expect(houseStates(IDS, { locked: ["**"] })["(root)"].locked).toBe(true);
+  });
+});
+
+describe("subagents", () => {
+  const sub = (kind, ms, more = {}) => ({ session: "main", agent: "sub1", kind, ts: ago(ms), paths: [], ...more });
+  const main = (kind, ms, more = {}) => ({ session: "main", agent: null, kind, ts: ago(ms), paths: [], ...more });
+  it("takes its main agent's character", () => {
+    const feed = [
+      { session: "other", agent: null, kind: "read", ts: ago(500), paths: ["specs/a.md"] },
+      sub("read", 1000, { paths: ["web/src/lib/a.js"] }),
+      main("write", 2000, { paths: ["install/x.sh"] }),
+    ];
+    const agents = {
+      main: { path: "install/x.sh", ts: ago(2000), kind: "write" },
+      sub1: { path: "web/src/lib/a.js", ts: ago(1000), kind: "read" },
+      other: { path: "specs/a.md", ts: ago(500), kind: "read" },
+    };
+    // the page numbers main agents only (lib/sessions.js): the subagent has its main agent's number
+    const s = townState({ agents, files: {}, feed }, { main: 1, sub1: 1, other: 2 }, IDS, NOW);
+    const by = Object.fromEntries(s.agents.map((a) => [a.key, a]));
+    expect(by.main).toMatchObject({ character: "hero", parent: null });
+    expect(by.sub1).toMatchObject({ character: "hero", parent: "main", building: "web/src/lib", action: "read" });
+    expect(by.other.character).toBe("mage");
+  });
+  it("leaves soon after its last event", () => {
+    const feed = [main("read", 1000, { paths: ["specs/a.md"] }), sub("read", SUB_GONE_MS + 1, { paths: ["specs/b.md"] })];
+    const s = townState({ agents: {}, files: {}, feed }, { main: 1, sub1: 2 }, IDS, NOW);
+    expect(s.agents.map((a) => a.key)).toEqual(["main"]);
   });
 });
