@@ -892,10 +892,12 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
 
   // ---------------------------------------------------------------- agents and building states from live state
   const COLORS = { hero: "#ff9a3c", mage: "#b56cff", priest: "#3fe0c8" };
-  const CLIP = {
-    hero: { write: "hero_hammer", walk: "hero_walk" },
-    mage: { read: "mage_read", walk: "mage_walk" },
-    priest: { blocked: "priest_bump", walk: "priest_walk" },
+  // Which clip plays for an action: the pack's sprite named <character>_<verb> when it has one
+  // (art batches plug in by name), else the idle clips.
+  const VERB = { write: "hammer", read: "read", blocked: "bump", walk: "walk" };
+  const clipFor = (character, action) => {
+    const name = VERB[action] && `${character}_${VERB[action]}`;
+    return name && pack.sprites[name] ? name : undefined;
   };
   // Where each character stands, as an offset in painting pixels from the building's front-bottom
   // point (the PoC's sample spots); a blocked agent stands outside the barrier.
@@ -1009,10 +1011,10 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
         if (Math.abs(dx) > 0.15 * dt * 60) this.facingLeft = dx < 0;
       }
       if (walking) this.dropPrints(this.pos.distanceTo(before));
-      const clips = CLIP[this.character] ?? {};
+
       // waiting for the person: dozing, when the character has a dozing clip (bench and sitting come with art)
       const doze = `${this.character}_idle_doze`;
-      const clip = walking ? clips.walk : clips[this.state.action] ?? (this.state.action === "wait" && loaded.has(doze) ? doze : undefined);
+      const clip = walking ? clipFor(this.character, "walk") : clipFor(this.character, this.state.action) ?? (this.state.action === "wait" && loaded.has(doze) ? doze : undefined);
       const name = clip ?? this.idleClip(dt);
       // mirror when the clip faces the other way than the walk (sheet "faces", else known defaults)
       const facesLeft = (pack.sprites[name]?.faces ?? (CLIPS_FACING_LEFT.has(name) ? "left" : "right")) === "left";
@@ -1039,7 +1041,8 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
         this.alert.mesh.position.copy(this.pos).add(new THREE.Vector3(-this.h * 0.05, this.h * 0.98, 0));
         this.alert.update(dt);
       }
-      const hammering = !walking && this.sprite.name === "hero_hammer";
+      // the art draws no sparks (decided 2026-10-24): every hammering clip gets the code's sparks
+      const hammering = !walking && !!this.sprite.name?.endsWith("_hammer");
       if (hammering && !this.sparks) this.sparks = new Sparks(new THREE.Color(1, 0.65, 0.2), this.h);
       else if (!hammering && this.sparks) {
         this.sparks.remove();
