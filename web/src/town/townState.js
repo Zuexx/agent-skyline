@@ -2,6 +2,7 @@
 // which buildings were changed recently. Built from the page's activity state (lib/activity.js), so
 // the town follows the same events as the rest of the page. Pure, no React, no three.js.
 import { computeConflicts } from "../lib/conflicts.js";
+import { matchGlob } from "../lib/zones.js";
 
 export const CHARACTERS = ["hero", "mage", "priest"]; // by order of first appearance (spec 09)
 export const ACTIVE_MS = 3 * 60_000; // an agent with no event for this long goes home (idle)
@@ -152,4 +153,31 @@ export function townState(activity, agentSeq, buildingIds, nowMs, prompts = {}) 
   }
   conflicts.sort((x, y) => y.at - x.at);
   return { agents, recent: [...recent].sort(), tests: testResults(activity?.feed, buildingIds, where), conflicts };
+}
+
+// Uncommitted changes in a building: this many files or more is a big change (spec 09 §4).
+export const BIG_CHANGE = 10;
+
+/**
+ * What stands on each building without an agent there (spec 09 §4): { [building]: { changes,
+ * level, locked, scope } }, only for buildings with something to show. changes: files with
+ * uncommitted changes (`working`, the Map path -> change from /api/working); level 0-3 for the
+ * scaffold (none / 1-2 files / 3-9 / BIG_CHANGE or more); locked: the whole folder is in a locked
+ * zone (`locked` globs); scope: the folder is inside the declared task scope (`allow` globs).
+ */
+export function houseStates(buildingIds, { working = null, locked = [], allow = [] } = {}) {
+  const out = {};
+  const at = (id) => (out[id] ??= { changes: 0, level: 0, locked: false, scope: false });
+  for (const p of working?.keys?.() ?? []) {
+    const b = buildingOf(p, buildingIds);
+    if (b) at(b).changes++;
+  }
+  // a folder counts as covered when a file directly in it would match
+  const covered = (id, globs) => globs.some((g) => matchGlob(g, id === "(root)" ? "_" : `${id}/_`));
+  for (const id of buildingIds) {
+    if (locked.length && covered(id, locked)) at(id).locked = true;
+    if (allow.length && covered(id, allow)) at(id).scope = true;
+  }
+  for (const h of Object.values(out)) h.level = h.changes === 0 ? 0 : h.changes < 3 ? 1 : h.changes < BIG_CHANGE ? 2 : 3;
+  return out;
 }

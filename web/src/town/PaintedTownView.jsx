@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPaintedTown } from "./paintedTown.js";
-import { townState } from "./townState.js";
+import { houseStates, townState } from "./townState.js";
 import { buildingOf, townBuildings } from "./townLayout.js";
 import { useNow } from "../lib/useNow.js";
 
@@ -11,9 +11,11 @@ import { useNow } from "../lib/useNow.js";
  * repo's files: folders the painting does not have become construction sites (townLayout.js).
  * `names`: agent key -> name tag ("Claude 1"); `prompts`: agent key -> { text, at } (its latest
  * prompt, shown in a bubble for a moment). Clicking a building calls onPickFolder(id, files)
- * (null on open ground); `folder` is the building whose sign is marked.
+ * (null on open ground); `folder` is the building whose sign is marked. `working` (Map path ->
+ * uncommitted change), `locked` (zone globs) and `scopeAllow` (task scope globs) set what stands on
+ * the houses (scaffolds, barriers, scope rings).
  */
-export default function PaintedTownView({ pack, variant, activity, agentSeq, paths = [], view = "pano", names = {}, prompts = {}, rootName = "", folder = null, onPickFolder }) {
+export default function PaintedTownView({ pack, variant, activity, agentSeq, paths = [], view = "pano", names = {}, prompts = {}, rootName = "", folder = null, onPickFolder, working = null, locked = [], scopeAllow = [] }) {
   const box = useRef(null);
   const renderer = useRef(null);
   const [error, setError] = useState(null);
@@ -24,8 +26,9 @@ export default function PaintedTownView({ pack, variant, activity, agentSeq, pat
   const sites = useMemo(() => town.filter((b) => !b.painted && b.lot).map((b) => ({ id: b.id, lot: b.lot })), [town]);
   const state = useMemo(() => {
     const s = townState(activity, agentSeq, buildingIds, now, prompts);
-    return { ...s, agents: s.agents.map((a) => ({ ...a, name: names[a.key] ?? null, prompt: prompts[a.key] ?? null })) };
-  }, [activity, agentSeq, buildingIds, now, names, prompts]);
+    const houses = houseStates(buildingIds, { working, locked, allow: scopeAllow });
+    return { ...s, houses, agents: s.agents.map((a) => ({ ...a, name: names[a.key] ?? null, prompt: prompts[a.key] ?? null })) };
+  }, [activity, agentSeq, buildingIds, now, names, prompts, working, locked, scopeAllow]);
   const stateRef = useRef(state);
   stateRef.current = state;
   const folderRef = useRef(folder);

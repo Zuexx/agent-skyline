@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildingOf, searchedBuildings, townState, ACTIVE_MS, GONE_MS, RECENT_MS } from "./townState.js";
+import { buildingOf, houseStates, searchedBuildings, townState, ACTIVE_MS, GONE_MS, RECENT_MS } from "./townState.js";
 
 const IDS = ["(root)", "web/src/city", "web/src/lib", "web", "specs", "install"];
 const NOW = Date.parse("2026-10-23T12:00:00Z");
@@ -125,5 +125,31 @@ describe("townState from the feed", () => {
   });
   it("leaves the file watcher out of the feed too", () => {
     expect(townState(withFeed([ev("exec", 1000, { source: "watcher" })]), {}, IDS, NOW).agents).toEqual([]);
+  });
+});
+
+describe("houseStates", () => {
+  it("counts uncommitted changes per building and grades the scaffold", () => {
+    const working = new Map([
+      ["specs/a.md", {}],
+      ["specs/b.md", {}],
+      ["specs/c.md", {}],
+      ["install/x.sh", {}],
+      ...Array.from({ length: 10 }, (_, i) => [`web/src/lib/f${i}.js`, {}]),
+    ]);
+    const h = houseStates(IDS, { working });
+    expect(h.specs).toEqual({ changes: 3, level: 2, locked: false, scope: false });
+    expect(h.install.level).toBe(1);
+    expect(h["web/src/lib"].level).toBe(3);
+    expect(h.web).toBeUndefined();
+  });
+  it("marks folders a locked zone or the task scope covers", () => {
+    const h = houseStates(IDS, { locked: ["install/**", "web/src/**"], allow: ["specs/**"] });
+    expect(h.install.locked).toBe(true);
+    expect(h["web/src/city"].locked).toBe(true);
+    expect(h.web).toBeUndefined(); // only partly locked
+    expect(h.specs.scope).toBe(true);
+    expect(h["(root)"]).toBeUndefined();
+    expect(houseStates(IDS, { locked: ["**"] })["(root)"].locked).toBe(true);
   });
 });

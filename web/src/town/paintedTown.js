@@ -1072,6 +1072,7 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       this.barriers = new Map();
       this.scaffolds = new Map();
       this.spills = new Map();
+      this.scopes = new Map();
       this.failing = new Map(); // tests failed: black smoke and a small fire until the next run
       this.passShown = new Map(); // building -> the passed run already celebrated
       this.clashShown = new Set();
@@ -1132,7 +1133,7 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       for (const [id, o] of map) if (!want.has(id)) (o.remove(), map.delete(id));
       for (const id of want) if (!map.has(id) && buildings.has(id)) map.set(id, make(buildings.get(id).pos, buildings.get(id)));
     }
-    update(blocked, writing, lit) {
+    update(blocked, scaffold, lit, scoped) {
       this.sync(this.barriers, blocked, (pos) => {
         const r = 3.76;
         const parts = [groundPlane(r * 2.5, r * 2.5, runesMat(night ? 3 : 1.6), pos)];
@@ -1145,15 +1146,27 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
         l.intensity = (night ? 3 : 1.2) * Math.PI;
         return { remove: () => (parts.forEach((p) => scene.remove(p)), l.release()) };
       });
-      this.sync(this.scaffolds, writing, (pos) => {
-        const s = new Sprite(0);
+      // the scaffold's level: 1 small (1-2 files), 2 full (3-9), 3 a second storey on top (10 or more)
+      for (const [id, o] of this.scaffolds) if (scaffold.get(id) !== o.level) (o.remove(), this.scaffolds.delete(id));
+      for (const [id, level] of scaffold) {
+        if (this.scaffolds.has(id) || !buildings.has(id)) continue;
+        // a step toward the camera: a low scaffold at the house's own point sank into the painted walls
+        const pos = frontOf(buildings.get(id));
         const meta = pack.sprites.scaffold;
         const w = 5.47;
-        s.h = (w * meta.char_h) / (meta.cell[0] - 12);
-        s.set("scaffold");
-        s.mesh.position.copy(pos).add(new THREE.Vector3(0, 0, 0.5));
-        return { update: (dt) => s.update(dt), remove: () => s.remove() };
-      });
+        const h = (w * meta.char_h) / (meta.cell[0] - 12);
+        const H = (h * meta.cell[1]) / meta.char_h; // the sprite's height in metres
+        const parts = [];
+        const add = (scale, y) => {
+          const s = new Sprite(h * scale);
+          s.set("scaffold");
+          s.mesh.position.copy(pos).add(new THREE.Vector3(0, y, parts.length * 0.05));
+          parts.push(s);
+        };
+        add(level === 1 ? 0.8 : 1, 0);
+        if (level === 3) add(0.85, H * 0.78);
+        this.scaffolds.set(id, { level, parts, update: (dt) => parts.forEach((s) => s.update(dt)), remove: () => parts.forEach((s) => s.remove()) });
+      }
       this.sync(this.spills, lit, (pos, b) => {
         const r = pos.length() * 0.07;
         const at = groundAt(b.pixel[0], b.pixel[1] + 20) ?? pos.clone().multiplyScalar(0.985); // in front of the door
@@ -1163,6 +1176,17 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
         return { remove: () => (scene.remove(m), l.release()) };
       });
       for (const s of this.scaffolds.values()) s.update(0);
+      // the task scope: a pale green ring on the ground (spec 09 §4), calm, no motion
+      // An ellipse facing the camera in front of the door, as wide as the house (a flat disc under the
+      // house was hidden by the painted walls).
+      this.sync(this.scopes, scoped ?? new Set(), (pos, b) => {
+        const at = frontOf(b);
+        const wPx = b.box ? b.box[2] - b.box[0] : 120;
+        const m = footEllipse((wPx * 0.7 * at.length()) / V.focalPx, glowMat(linear("rgb(110,255,150)"), night ? 1.5 : 1.2, true, night ? 0.7 : 0.6));
+        m.position.copy(at);
+        m.quaternion.copy(camera.quaternion);
+        return { remove: () => (scene.remove(m), m.material.dispose()) };
+      });
     }
   }
 
@@ -1227,11 +1251,40 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     return smokeCloud(sources, { tint: night ? new THREE.Color(0.32, 0.34, 0.42) : new THREE.Color(0.92, 0.9, 0.86) });
   })();
 
-  // Where effects on a building stand: on the ground just in front of its door, a step toward the
-  // camera. The building's own point lies inside the painted house, which hid anything put there.
+  // Where effects on a building stand: its front-bottom point, a step toward the camera. The point
+  // itself lies inside the painted house, which hid anything put there; the painting's ground just
+  // below the door can belong to a house in front (docs behind the town hall).
+  // So the distance is measured: the median painted depth over the upper middle of the building's
+  // box (the house's own front; a house in front covers the lower part), and the point goes just in front of it along the line of sight to the
+  // building's point. The relief keeps long triangles along each house's outline, so anything
+  // behind the front face is covered; a fixed step forward was right for some houses only.
+  const fronts = new Map();
   function frontOf(b) {
-    const p = groundAt(b.pixel[0], b.pixel[1] + 18) ?? b.pos.clone();
-    return p.addScaledVector(p.clone().normalize(), -2.5);
+    if (!fronts.has(b.id)) {
+      const ds = [];
+      const box = b.box ?? (b.site ? siteBox(b.id) : null);
+      if (box) {
+        for (let i = 0; i < 5; i++) {
+          for (let j = 0; j < 5; j++) {
+            const g = groundAt(box[0] + (box[2] - box[0]) * (0.35 + 0.075 * i), box[1] + (box[3] - box[1]) * (0.2 + 0.08 * j));
+            if (g) ds.push(g.length());
+          }
+        }
+      }
+      ds.sort((x, y) => x - y);
+      const d = ds.length ? Math.min(ds[ds.length >> 1], b.pos.length()) : b.pos.length();
+      // along the line of sight through the house's base: the building's own pixel across, the
+      // bottom of its box down (the building's own point is not always at the base; docs' sits
+      // halfway up the house)
+      const base = box ? rayAt(b.pixel[0], Math.max(b.pixel[1], box[3] - 10)) : b.pos.clone().normalize();
+      fronts.set(b.id, base.multiplyScalar(d - 2.5));
+    }
+    return fronts.get(b.id).clone();
+  }
+  /** The unit direction from the camera through painting pixel (px, py). */
+  function rayAt(px, py) {
+    const [cx, cy] = V.principal;
+    return new THREE.Vector3((px + 0.5 - cx) / V.focalPx, -(py + 0.5 - cy) / V.focalPx, -1).applyMatrix4(B).normalize();
   }
   // Up in front of the roof: as high as the building's picking box reaches on screen (the painting's
   // pixel at the top often shows something nearer, so its depth cannot be used), or the site's top.
@@ -1378,6 +1431,7 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
       o.sign.remove();
       signs.delete(id);
       buildings.delete(id);
+      fronts.delete(id);
       sites.delete(id);
     }
     for (const [id, { pixel, pos }] of want) {
@@ -1476,10 +1530,17 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     const at = new Set(live.agents.filter((a) => a.action !== "idle").map((a) => a.building));
     const recent = new Set(live.recent);
     V.buildings.forEach((b, i) => (winLevels[i] = at.has(b.id) ? WIN.agent : recent.has(b.id) ? WIN.recent : WIN.rest));
+    // What stands on the houses (spec 09 §4): barriers on locked folders (always, spec §4 note 3) and
+    // where an agent was just stopped; scaffolds as high as the uncommitted changes go (at least
+    // the lowest while an agent writes there); rings on the folders of the declared task scope.
+    const houses = live.houses ?? {};
     const blocked = new Set(live.agents.filter((a) => a.action === "blocked").map((a) => a.building));
-    const writing = new Set(live.agents.filter((a) => a.action === "write").map((a) => a.building));
+    for (const [id, h] of Object.entries(houses)) if (h.locked) blocked.add(id);
+    const scaffold = new Map(Object.entries(houses).filter(([, h]) => h.level > 0).map(([id, h]) => [id, h.level]));
+    for (const a of live.agents) if (a.action === "write" && !scaffold.has(a.building)) scaffold.set(a.building, 1);
+    const scoped = new Set(Object.keys(houses).filter((id) => houses[id].scope));
     const lit = new Set(windowsOn ? V.buildings.filter((b, i) => winLevels[i] >= SPILL_MIN).map((b) => b.id) : []);
-    fx.update(blocked, writing, lit);
+    fx.update(blocked, scaffold, lit, scoped);
     fx.updateTests(live.tests);
     fx.updateConflicts(live.conflicts);
     reliefMat.uniforms.readEnergy.value = live.agents.some((a) => a.action === "read") ? (night ? 2.2 : 1.4) : 0;
@@ -1764,7 +1825,7 @@ export async function createPaintedTown({ container, pack, base, variant = "nigh
     pick,
     /** for checks: where each agent stands and what it plays */
     debugAgents: () => [...agents.values(), ...leaving].map((a) => ({ key: a.key, pos: a.pos.toArray(), clip: a.sprite.name, path: a.path.length, fade: a.fade, circle: a.circle.visible && +a.circle.material.uniforms.fade.value.toFixed(2) })),
-    debugFx: () => ({ effects: effects.size, failing: [...fx.failing.keys()], lightsUsed: fxLights.filter((l) => !l.free).length }),
+    debugFx: () => ({ effects: effects.size, failing: [...fx.failing.keys()], lightsUsed: fxLights.filter((l) => !l.free).length, scaffolds: [...fx.scaffolds].map(([id, o]) => [id, o.level, o.parts?.map((s) => [s.name, s.mesh.visible, ...pixelOf(s.mesh.position).map(Math.round)])]) }),
     get fps() {
       return fps;
     },

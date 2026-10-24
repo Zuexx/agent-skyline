@@ -688,6 +688,9 @@ export default function App() {
             names={townNames}
             prompts={townPrompts}
             rootName={repoName}
+            working={working}
+            locked={zones.locked}
+            scopeAllow={scope.allow}
             folder={townFolder?.id ?? null}
             onPickFolder={(id, files) => {
               setSelected(null);
